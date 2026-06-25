@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-music}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-music}
+      POSTGRES_DB: ${POSTGRES_DB:-music}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-music}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-music}:${POSTGRES_PASSWORD:-music}@postgres:5432/${POSTGRES_DB:-music}
+      DATA_DIR: /data/rars
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      DEBUG: ${DEBUG:-false}
+      # Cookie Secure precisa de HTTPS. Em dev local (http) ponha COOKIE_SECURE=false.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env (openssl rand -hex 32)}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@toqueagora.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      DEFAULT_QUOTA_GB: ${DEFAULT_QUOTA_GB:-5}
+      ADMIN_QUOTA_GB: ${ADMIN_QUOTA_GB:-20}
+      ADMIN_WHATSAPP: ${ADMIN_WHATSAPP:-}
+    volumes:
+      # Volume do host onde os .rar enviados ficam armazenados.
+      # No WSL, mantenha em ./data/rars (filesystem do Linux), evite /mnt/c.
+      - ${RARS_HOST_PATH:-./data/rars}:/data/rars
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/api/health').status==200 else sys.exit(1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Vazio = mesma origem (a API é servida em /api pelo Caddy).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - app
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      # Porta principal exposta. O Cloudflare Tunnel aponta para cá.
+      - "${PUBLIC_PORT:-8080}:8080"
+    networks:
+      - app
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+
+networks:
+  app:
+    driver: bridge

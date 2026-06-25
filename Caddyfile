@@ -1,0 +1,16 @@
+# Proxy de domínio único: front + API sob o mesmo host.
+# O Cloudflare Tunnel aponta play.diegodev.app.br -> caddy:8080.
+# TLS é terminado pelo Cloudflare, então aqui servimos HTTP simples na 8080.
+:8080 {
+	# API → backend
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Tudo o mais → front (Next.js)
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	encode gzip
+}
