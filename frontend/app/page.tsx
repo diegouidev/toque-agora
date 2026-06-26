@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import AddToPlaylistModal from "./components/AddToPlaylistModal";
 import AdminPanel from "./components/AdminPanel";
 import ProfileModal from "./components/ProfileModal";
+import BandCategories from "./components/BandCategories";
 import BandGrid from "./components/BandGrid";
 import LoginScreen from "./components/LoginScreen";
 import MobileNav from "./components/MobileNav";
@@ -26,6 +27,7 @@ import {
   deletePlaylist,
   fetchBands,
   fetchBandTracks,
+  fetchCategories,
   fetchFavorites,
   fetchPlaylists,
   fetchPlaylistTracks,
@@ -35,8 +37,10 @@ import {
   renameBand,
   renameTrack,
   reorderPlaylist,
+  setBandCategories,
   toggleFavorite,
   type BandSummary,
+  type Category,
   type PlaylistSummary,
   type QuotaExceeded,
   type Track,
@@ -60,6 +64,8 @@ export default function Home() {
   const { me, loading, logout, refresh } = useAuth();
 
   const [bands, setBands] = useState<BandSummary[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [filterCategory, setFilterCategory] = useState<number | null>(null);
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [sharedPlaylists, setSharedPlaylists] = useState<PlaylistSummary[]>([]);
   const [favCount, setFavCount] = useState(0);
@@ -91,7 +97,14 @@ export default function Home() {
 
   const loadBands = useCallback(async () => {
     try {
-      setBands(await fetchBands());
+      setBands(await fetchBands(filterCategory));
+    } catch {
+      /* ignore */
+    }
+  }, [filterCategory]);
+  const loadCategories = useCallback(async () => {
+    try {
+      setCategories(await fetchCategories());
     } catch {
       /* ignore */
     }
@@ -128,12 +141,13 @@ export default function Home() {
   useEffect(() => {
     if (me) {
       loadBands();
+      loadCategories();
       loadPlaylists();
       loadFavCount();
       loadRecent();
       loadShared();
     }
-  }, [me, loadBands, loadPlaylists, loadFavCount, loadRecent, loadShared]);
+  }, [me, loadBands, loadCategories, loadPlaylists, loadFavCount, loadRecent, loadShared]);
 
   // Restaura a fila/posição salva ao abrir (uma vez, com play PAUSADO).
   useEffect(() => {
@@ -254,6 +268,18 @@ export default function Home() {
     setQueue(list);
     setCurrentIndex(index);
     setIsPlaying(true);
+  }
+
+  // Atualiza as categorias de um CD no estado local (após editar no hero).
+  function onBandCategoriesChange(bandId: number, cats: Category[]) {
+    setView((v) =>
+      v && v.kind === "band" && v.band.id === bandId
+        ? { ...v, band: { ...v.band, categories: cats } }
+        : v,
+    );
+    setBands((bs) =>
+      bs.map((b) => (b.id === bandId ? { ...b, categories: cats } : b)),
+    );
   }
 
   // Limpa a fila e o estado persistido (botão vassoura).
@@ -547,6 +573,13 @@ export default function Home() {
                 </div>
               )}
               <p className="mt-1 text-xs text-zinc-400">{viewTracks.length} faixas</p>
+              <BandCategories
+                bandId={view.band.id}
+                current={view.band.categories}
+                all={categories}
+                isAdmin={me.is_admin}
+                onChange={(cats) => onBandCategoriesChange(view.band.id, cats)}
+              />
               <button
                 onClick={() => viewTracks.length > 0 && startQueue(viewTracks, 0)}
                 disabled={viewTracks.length === 0}
@@ -607,6 +640,30 @@ export default function Home() {
   const collection = (
     <section className="space-y-3">
       <h2 className="text-lg font-bold">Sua coleção</h2>
+      {/* Chips de filtro por categoria */}
+      {categories.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setFilterCategory(null)}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              filterCategory === null ? "bg-accent text-black" : "bg-white/10 hover:bg-white/20"
+            }`}
+          >
+            Todos
+          </button>
+          {categories.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setFilterCategory(c.id)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                filterCategory === c.id ? "bg-accent text-black" : "bg-white/10 hover:bg-white/20"
+              }`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
       {bands.length > 0 ? (
         <BandGrid
           bands={bands}

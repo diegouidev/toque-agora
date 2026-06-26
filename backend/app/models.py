@@ -1,9 +1,36 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, BigInteger, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import (
+    Boolean,
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+
+
+# Associação M:N entre bandas (CDs) e categorias (Forró/Samba/Pagode...).
+band_categories = Table(
+    "band_categories",
+    Base.metadata,
+    Column(
+        "band_id",
+        ForeignKey("bands.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "category_id",
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
 
 
 class User(Base):
@@ -68,6 +95,23 @@ class Archive(Base):
     )
 
 
+class Category(Base):
+    """Categoria/gênero de CD (Forró, Samba, Pagode...). Criada pelo admin."""
+
+    __tablename__ = "categories"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    slug: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    bands: Mapped[list["Band"]] = relationship(
+        secondary=band_categories, back_populates="categories"
+    )
+
+
 class Band(Base):
     """Uma banda/coleção = pasta de 1º nível dentro de um arquivo (ou a raiz)."""
 
@@ -92,6 +136,9 @@ class Band(Base):
         back_populates="band",
         cascade="all, delete-orphan",
         order_by="Track.index",
+    )
+    categories: Mapped[list["Category"]] = relationship(
+        secondary=band_categories, back_populates="bands"
     )
 
 

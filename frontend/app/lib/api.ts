@@ -27,6 +27,12 @@ export interface PlaylistShareOut {
   email: string;
 }
 
+export interface Category {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 export interface BandSummary {
   id: number;
   archive_id: number;
@@ -37,6 +43,7 @@ export interface BandSummary {
   owner_id: number | null;
   owner_name: string | null;
   owner_has_avatar: boolean;
+  categories: Category[];
 }
 
 export interface UploadError {
@@ -144,9 +151,45 @@ export function coverUrl(bandId: number): string {
   return `${API_URL}/api/bands/${bandId}/cover`;
 }
 
-export async function fetchBands(): Promise<BandSummary[]> {
-  const res = await apiFetch("/api/bands");
+export async function fetchBands(categoryId?: number | null): Promise<BandSummary[]> {
+  const qs = categoryId != null ? `?category=${categoryId}` : "";
+  const res = await apiFetch(`/api/bands${qs}`);
   if (!res.ok) throw new Error("Falha ao listar bandas");
+  return res.json();
+}
+
+// ---------- Categorias ----------
+export async function fetchCategories(): Promise<Category[]> {
+  const res = await apiFetch("/api/categories");
+  if (!res.ok) throw new Error("Falha ao listar categorias");
+  return res.json();
+}
+export async function createCategory(name: string): Promise<Category> {
+  const res = await apiFetch("/api/categories", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao criar categoria");
+  }
+  return res.json();
+}
+export async function deleteCategory(id: number): Promise<void> {
+  const res = await apiFetch(`/api/categories/${id}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error("Falha ao excluir categoria");
+}
+export async function setBandCategories(
+  bandId: number,
+  categoryIds: number[],
+): Promise<Category[]> {
+  const res = await apiFetch(`/api/bands/${bandId}/categories`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category_ids: categoryIds }),
+  });
+  if (!res.ok) throw new Error("Falha ao atualizar categorias do CD");
   return res.json();
 }
 

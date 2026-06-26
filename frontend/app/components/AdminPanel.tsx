@@ -5,13 +5,17 @@ import {
   type AdminOverview,
   type AdminUserDetail,
   type AdminUserStat,
+  type Category,
   type PlaylistSummary,
   avatarUrl,
+  createCategory,
   createUser,
+  deleteCategory,
   deleteUser,
   fetchAdminOverview,
   fetchAdminUser,
   fetchAdminUserPlaylists,
+  fetchCategories,
   resetUserPassword,
   setUserBlocked,
   updateUserQuota,
@@ -36,8 +40,35 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
   const [password, setPassword] = useState("");
   const [quota, setQuota] = useState("5");
   const [error, setError] = useState<string | null>(null);
+  const [cats, setCats] = useState<Category[]>([]);
+  const [newCat, setNewCat] = useState("");
+
+  async function loadCats() {
+    try {
+      setCats(await fetchCategories());
+    } catch {
+      /* ignore */
+    }
+  }
+  async function addCat(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newCat.trim()) return;
+    try {
+      await createCategory(newCat.trim());
+      setNewCat("");
+      loadCats();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Falha ao criar categoria");
+    }
+  }
+  async function removeCat(c: Category) {
+    if (!confirm(`Excluir a categoria "${c.name}"? Os CDs perdem essa marcação.`)) return;
+    await deleteCategory(c.id);
+    loadCats();
+  }
 
   async function load() {
+    loadCats();
     try {
       setData(await fetchAdminOverview());
     } catch {
@@ -165,6 +196,44 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         )}
+
+        {/* Categorias */}
+        <div className="space-y-2 rounded-xl bg-black/30 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+            Categorias
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {cats.map((c) => (
+              <span
+                key={c.id}
+                className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs"
+              >
+                {c.name}
+                <button
+                  onClick={() => removeCat(c)}
+                  className="text-zinc-400 hover:text-red-400"
+                  aria-label={`Excluir ${c.name}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+            {cats.length === 0 && (
+              <span className="text-xs text-zinc-500">Nenhuma categoria ainda.</span>
+            )}
+          </div>
+          <form onSubmit={addCat} className="flex gap-2">
+            <input
+              value={newCat}
+              onChange={(e) => setNewCat(e.target.value)}
+              placeholder="Nova categoria (ex. Forró)"
+              className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+            <button className="rounded-lg bg-accent px-4 text-sm font-semibold text-black">
+              Criar
+            </button>
+          </form>
+        </div>
 
         {/* Criar usuário */}
         <form onSubmit={add} className="space-y-2 rounded-xl bg-black/30 p-4">

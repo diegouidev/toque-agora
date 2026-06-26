@@ -155,6 +155,25 @@ class BandSummary(BaseModel):
     owner_id: int | None = None
     owner_name: str | None = None
     owner_has_avatar: bool = False
+    categories: list["CategoryOut"] = []
+
+
+class CategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+
+
+class CategoryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class BandCategoriesUpdate(BaseModel):
+    """Define o conjunto de categorias de um CD (lista de ids)."""
+
+    category_ids: list[int]
 
 
 class BandOut(BaseModel):

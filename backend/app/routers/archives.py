@@ -3,6 +3,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
 
 from ..access import can_access_band
@@ -13,18 +14,19 @@ from ..archive_service import (
 )
 from ..auth import get_current_user
 from ..database import get_session
-from ..models import Archive, Band, Favorite, Track, User
-from ..schemas import BandSummary, NameUpdate, TrackOut
+from ..models import Archive, Band, Category, Favorite, Track, User
+from ..schemas import BandSummary, CategoryOut, NameUpdate, TrackOut
 
 router = APIRouter(prefix="/api", tags=["bands"])
 
 
 @router.get("/bands", response_model=list[BandSummary])
 async def list_bands(
+    category: int | None = None,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> list[BandSummary]:
-    """Lista as bandas do usuário (admin vê todas) com contagem de faixas."""
+    """Lista as bandas do usuário (admin vê todas), com categorias e filtro opcional."""
     count_subq = (
         select(Track.band_id, func.count(Track.id).label("track_count"))
         .group_by(Track.band_id)
@@ -43,10 +45,13 @@ async def list_bands(
         .join(Archive, Band.archive_id == Archive.id)
         .join(User, User.id == Archive.owner_id)
         .outerjoin(count_subq, Band.id == count_subq.c.band_id)
+        .options(selectinload(Band.categories))
         .order_by(Archive.created_at.desc(), Band.name)
     )
     if not user.is_admin:
         query = query.where(Archive.owner_id == user.id)
+    if category is not None:
+        query = query.where(Band.categories.any(Category.id == category))
 
     result = await session.execute(query)
     return [
@@ -60,6 +65,9 @@ async def list_bands(
             owner_id=owner_id,
             owner_name=(owner_name or owner_email),
             owner_has_avatar=owner_avatar is not None,
+            categories=[
+                CategoryOut(id=c.id, name=c.name, slug=c.slug) for c in band.categories
+            ],
         )
         for band, kind, track_count, owner_id, owner_name, owner_email, owner_avatar in result.all()
     ]
