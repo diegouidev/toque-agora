@@ -1,0 +1,38 @@
+import type { MetadataRoute } from "next";
+
+// Gera /manifest.webmanifest automaticamente (App Router do Next).
+export default function manifest(): MetadataRoute.Manifest {
+  return {
+    name: "TOQUE AGORA — A sua Playlist preferida",
+    short_name: "TOQUE AGORA",
+    description:
+      "TOQUE AGORA: faça upload dos seus .rar/.zip e ouça suas bandas com streaming direto, sem ocupar espaço extra.",
+    lang: "pt-BR",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    orientation: "portrait",
+    background_color: "#0b0b0f",
+    theme_color: "#0b0b0f",
+    icons: [
+      {
+        src: "/icons/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/icons/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/icons/icon-512-maskable.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
+      },
+    ],
+  };
+}

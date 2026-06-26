@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./lib/auth-context";
+import ServiceWorkerRegister from "./components/ServiceWorkerRegister";
 
 const display = Montserrat({
   subsets: ["latin"],
@@ -13,6 +14,21 @@ export const metadata: Metadata = {
   title: "TOQUE AGORA — A sua Playlist preferida",
   description:
     "TOQUE AGORA: faça upload dos seus .rar/.zip e ouça suas bandas com streaming direto, sem ocupar espaço extra.",
+  manifest: "/manifest.webmanifest",
+  applicationName: "TOQUE AGORA",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "TOQUE AGORA",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/favicon.ico", sizes: "any" },
+      { url: "/icons/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icons/icon-512.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
 };
 
 export const viewport: Viewport = {
@@ -20,6 +36,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -30,6 +47,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={display.variable}>
       <body>
+        <ServiceWorkerRegister />
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

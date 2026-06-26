@@ -10,11 +10,12 @@ import PlayerBar from "./components/PlayerBar";
 import PlaylistsBar from "./components/PlaylistsBar";
 import QueuePanel from "./components/QueuePanel";
 import SearchView from "./components/SearchView";
+import ShareModal from "./components/ShareModal";
 import Sidebar, { type Tab } from "./components/Sidebar";
 import TrackList from "./components/TrackList";
 import UploadModal from "./components/UploadModal";
 import UpgradeModal from "./components/UpgradeModal";
-import { MusicIcon, PlayIcon, UploadIcon } from "./components/icons";
+import { EditIcon, MusicIcon, PlayIcon, UploadIcon } from "./components/icons";
 import {
   addToPlaylist,
   coverUrl,
@@ -27,7 +28,10 @@ import {
   fetchPlaylists,
   fetchPlaylistTracks,
   fetchRecent,
+  fetchSharedPlaylists,
   removeFromPlaylist,
+  renameBand,
+  renameTrack,
   reorderPlaylist,
   toggleFavorite,
   type BandSummary,
@@ -41,7 +45,7 @@ import { useAuth } from "./lib/auth-context";
 // Identifica a "view" de faixas aberta: uma banda, uma playlist ou as curtidas.
 type View =
   | { kind: "band"; band: BandSummary }
-  | { kind: "playlist"; playlist: PlaylistSummary }
+  | { kind: "playlist"; playlist: PlaylistSummary; readOnly?: boolean }
   | { kind: "favorites" }
   | null;
 
@@ -50,6 +54,7 @@ export default function Home() {
 
   const [bands, setBands] = useState<BandSummary[]>([]);
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
+  const [sharedPlaylists, setSharedPlaylists] = useState<PlaylistSummary[]>([]);
   const [favCount, setFavCount] = useState(0);
   const [recent, setRecent] = useState<BandSummary[]>([]);
 
@@ -69,6 +74,7 @@ export default function Home() {
   const [showQueue, setShowQueue] = useState(false);
   const [quotaInfo, setQuotaInfo] = useState<QuotaExceeded | null>(null);
   const [addTrack, setAddTrack] = useState<Track | null>(null);
+  const [shareTarget, setShareTarget] = useState<PlaylistSummary | null>(null);
 
   const loadBands = useCallback(async () => {
     try {
@@ -98,6 +104,13 @@ export default function Home() {
       /* ignore */
     }
   }, []);
+  const loadShared = useCallback(async () => {
+    try {
+      setSharedPlaylists(await fetchSharedPlaylists());
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     if (me) {
@@ -105,8 +118,9 @@ export default function Home() {
       loadPlaylists();
       loadFavCount();
       loadRecent();
+      loadShared();
     }
-  }, [me, loadBands, loadPlaylists, loadFavCount, loadRecent]);
+  }, [me, loadBands, loadPlaylists, loadFavCount, loadRecent, loadShared]);
 
   // ---- Abrir views (apenas navegação/browse; não mexe na fila) ----
   const openBand = useCallback(async (band: BandSummary): Promise<Track[]> => {
@@ -144,6 +158,52 @@ export default function Home() {
       return [];
     }
   }, []);
+
+  // Playlist compartilhada comigo (somente leitura).
+  const openShared = useCallback(async (playlist: PlaylistSummary): Promise<Track[]> => {
+    setView({ kind: "playlist", playlist, readOnly: true });
+    try {
+      const t = await fetchPlaylistTracks(playlist.id);
+      setViewTracks(t);
+      return t;
+    } catch {
+      setViewTracks([]);
+      return [];
+    }
+  }, []);
+
+  // ---- Renomear (dono/admin) ----
+  async function onRenameTrack(track: Track) {
+    const name = prompt("Novo nome da faixa:", track.display_name);
+    if (name == null || !name.trim()) return;
+    try {
+      const updated = await renameTrack(track.id, name.trim());
+      setViewTracks((ts) =>
+        ts.map((t) =>
+          t.id === track.id ? { ...t, display_name: updated.display_name } : t,
+        ),
+      );
+    } catch {
+      alert("Falha ao renomear.");
+    }
+  }
+
+  async function onRenameBand(band: BandSummary) {
+    const name = prompt("Novo nome da banda:", band.name);
+    if (name == null || !name.trim()) return;
+    try {
+      await renameBand(band.id, name.trim());
+      loadBands();
+      loadRecent();
+      setView((v) =>
+        v && v.kind === "band" && v.band.id === band.id
+          ? { kind: "band", band: { ...v.band, name: name.trim() } }
+          : v,
+      );
+    } catch {
+      alert("Falha ao renomear.");
+    }
+  }
 
   // ---- Reprodução ----
   function startQueue(list: Track[], index: number) {
@@ -370,6 +430,11 @@ export default function Home() {
         ? `pl:${view.playlist.id}`
         : null;
 
+  // Playlist compartilhada comigo é somente leitura (não sou o dono).
+  const readOnly = view?.kind === "playlist" && view.readOnly === true;
+  const sharedOwner =
+    view?.kind === "playlist" && view.readOnly ? view.playlist.owner_email : null;
+
   // Painel de detalhe (banda / playlist / curtidas).
   const detail = view && (
     <section className="overflow-hidden rounded-2xl border border-white/5 bg-surface/40 shadow-xl backdrop-blur">
@@ -393,8 +458,23 @@ export default function Home() {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-lg font-bold">{viewTitle}</h3>
-          <p className="text-xs text-zinc-400">{viewTracks.length} faixas</p>
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-lg font-bold">{viewTitle}</h3>
+            {view.kind === "band" && (
+              <button
+                onClick={() => onRenameBand(view.band)}
+                className="shrink-0 text-zinc-500 hover:text-white"
+                aria-label="Renomear banda"
+                title="Renomear banda"
+              >
+                <EditIcon className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-zinc-400">
+            {viewTracks.length} faixas
+            {sharedOwner && <span> · compartilhada por {sharedOwner}</span>}
+          </p>
         </div>
         <button
           onClick={() => viewTracks.length > 0 && startQueue(viewTracks, 0)}
@@ -410,11 +490,16 @@ export default function Home() {
           currentTrackId={currentTrack?.id ?? null}
           isPlaying={isPlaying}
           onSelect={playFromView}
-          onToggleFavorite={onToggleFav}
-          onAddToPlaylist={(t) => setAddTrack(t)}
+          onToggleFavorite={readOnly ? undefined : onToggleFav}
+          onAddToPlaylist={readOnly ? undefined : (t) => setAddTrack(t)}
           onPlayNext={onPlayNext}
-          onRemove={view.kind === "playlist" ? onRemoveFromPlaylist : undefined}
-          onReorder={view.kind === "playlist" ? onReorderPlaylist : undefined}
+          onRename={readOnly ? undefined : onRenameTrack}
+          onRemove={
+            view.kind === "playlist" && !readOnly ? onRemoveFromPlaylist : undefined
+          }
+          onReorder={
+            view.kind === "playlist" && !readOnly ? onReorderPlaylist : undefined
+          }
         />
       </div>
     </section>
@@ -480,10 +565,13 @@ export default function Home() {
         )}
         <PlaylistsBar
           playlists={playlists}
+          sharedPlaylists={sharedPlaylists}
           favCount={favCount}
           activeKey={activeKey}
           onOpenFavorites={() => playFrom(openFavorites)}
           onOpenPlaylist={(pl) => playFrom(() => openPlaylist(pl))}
+          onOpenShared={(pl) => playFrom(() => openShared(pl))}
+          onShare={(pl) => setShareTarget(pl)}
           onCreate={onCreatePlaylist}
           onDelete={onDeletePlaylist}
         />
@@ -498,10 +586,13 @@ export default function Home() {
         tab={tab}
         onTab={onTab}
         playlists={playlists}
+        sharedPlaylists={sharedPlaylists}
         favCount={favCount}
         activeKey={activeKey}
         onOpenFavorites={() => playFrom(openFavorites)}
         onOpenPlaylist={(pl) => playFrom(() => openPlaylist(pl))}
+        onOpenShared={(pl) => playFrom(() => openShared(pl))}
+        onShare={(pl) => setShareTarget(pl)}
         onCreate={onCreatePlaylist}
         onDelete={onDeletePlaylist}
         onUpload={() => setShowUpload(true)}
@@ -588,6 +679,16 @@ export default function Home() {
           onReorderUpcoming={onReorderUpcoming}
           onRemoveFromQueue={onRemoveFromQueue}
           onClose={() => setShowQueue(false)}
+        />
+      )}
+      {shareTarget && (
+        <ShareModal
+          playlist={shareTarget}
+          onClose={() => setShareTarget(null)}
+          onChanged={() => {
+            loadPlaylists();
+            loadShared();
+          }}
         />
       )}
       {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}

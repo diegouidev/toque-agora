@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import init_db
 from .routers import (
+    admin,
     archives,
     auth_router,
     history,
@@ -66,6 +67,7 @@ app.add_middleware(
 
 app.include_router(auth_router.router)
 app.include_router(users.router)
+app.include_router(admin.router)
 app.include_router(upload.router)
 app.include_router(archives.router)
 app.include_router(playlists.router)

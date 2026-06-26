@@ -80,9 +80,12 @@ Acesse **http://localhost:8080** (porta do Caddy). Login com `ADMIN_EMAIL`/`ADMI
 | `POST` | `/api/upload/chunk` | Envia um pedaço (<100 MB) — passa pelo proxy/Cloudflare |
 | `POST` | `/api/upload/complete` | Finaliza o upload em pedaços e indexa as bandas |
 | `POST` | `/api/upload/abort` | Cancela o upload em pedaços (limpa o temporário) |
+| `GET` | `/api/admin/overview` | Admin: totais, stats por usuário e mais tocadas |
 | `GET` | `/api/bands` | Bandas do usuário |
 | `GET` | `/api/bands/{id}/tracks` | Faixas de uma banda |
 | `GET` | `/api/bands/{id}/cover` | Capa da banda (de dentro do arquivo) |
+| `PATCH` | `/api/bands/{id}` | Renomeia a banda (dono/admin) |
+| `PATCH` | `/api/tracks/{id}` | Renomeia a faixa (dono/admin) |
 | `GET` | `/api/stream/{track_id}` | Streaming da faixa (Range/206) |
 | `DELETE` | `/api/archives/{id}` | Exclui o arquivo (disco + banco) |
 | `GET` | `/api/search?q=` | Busca bandas e faixas por nome |
@@ -90,3 +93,5 @@ Acesse **http://localhost:8080** (porta do Caddy). Login com `ADMIN_EMAIL`/`ADMI
 | `GET` | `/api/history` | Bandas tocadas recentemente |
 | `PUT/DELETE/GET` | `/api/favorites…` | Curtir/descurtir e listar curtidas |
 | `GET/POST/DELETE` | `/api/playlists…` | CRUD de playlists, faixas e ordem |
+| `GET` | `/api/playlists/shared` | Playlists compartilhadas comigo |
+| `POST/GET/DELETE` | `/api/playlists/{id}/share…` | Compartilhar com usuário / listar / remover |

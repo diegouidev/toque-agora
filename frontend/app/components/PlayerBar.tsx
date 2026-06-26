@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { coverUrl, recordPlay, streamUrl, type Track } from "../lib/api";
 import {
   ChevronDownIcon,
+  ClockIcon,
   MusicIcon,
   NextIcon,
   PauseIcon,
@@ -12,6 +13,7 @@ import {
   QueueIcon,
   RepeatIcon,
   ShuffleIcon,
+  VolumeIcon,
 } from "./icons";
 
 interface Props {
@@ -79,9 +81,85 @@ export default function PlayerBar({
   const [duration, setDuration] = useState(0);
   const [expanded, setExpanded] = useState(false);
 
-  // Quando a faixa termina: repeat-one reinicia a mesma; senão delega ao pai.
+  // Volume (0..1), persistido em localStorage.
+  const [volume, setVolume] = useState(1);
+  // Sleep timer: horário-alvo (ms) ou "parar no fim da faixa".
+  const [sleepUntil, setSleepUntil] = useState<number | null>(null);
+  const [sleepEndOfTrack, setSleepEndOfTrack] = useState(false);
+  const [sleepMenu, setSleepMenu] = useState(false);
+  const [now, setNow] = useState(0);
+
+  // Ref de isPlaying para uso dentro de timeouts (evita closure obsoleto).
+  const isPlayingRef = useRef(isPlaying);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  // Carrega o volume salvo uma vez.
+  useEffect(() => {
+    const saved = Number(localStorage.getItem("ta_volume"));
+    if (!Number.isNaN(saved) && saved >= 0 && saved <= 1) setVolume(saved);
+  }, []);
+  // Aplica o volume ao <audio> e persiste.
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+    try {
+      localStorage.setItem("ta_volume", String(volume));
+    } catch {
+      /* ignore */
+    }
+  }, [volume]);
+
+  // Sleep timer por minutos: agenda o pause e atualiza o "restam X min".
+  useEffect(() => {
+    if (sleepUntil == null) return;
+    const fire = () => {
+      audioRef.current?.pause();
+      setSleepUntil(null);
+      if (isPlayingRef.current) onTogglePlay();
+    };
+    const ms = sleepUntil - Date.now();
+    if (ms <= 0) {
+      fire();
+      return;
+    }
+    const t = setTimeout(fire, ms);
+    const tick = setInterval(() => setNow(Date.now()), 15000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(tick);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sleepUntil]);
+
+  function setSleep(option: number | "track" | null) {
+    setSleepMenu(false);
+    if (option === null) {
+      setSleepUntil(null);
+      setSleepEndOfTrack(false);
+    } else if (option === "track") {
+      setSleepEndOfTrack(true);
+      setSleepUntil(null);
+    } else {
+      setSleepEndOfTrack(false);
+      setNow(Date.now());
+      setSleepUntil(Date.now() + option * 60000);
+    }
+  }
+
+  const sleepActive = sleepUntil != null || sleepEndOfTrack;
+  const sleepRemaining =
+    sleepUntil != null ? Math.max(0, Math.ceil((sleepUntil - now) / 60000)) : null;
+
+  // Quando a faixa termina: sleep "fim da faixa" para; repeat-one reinicia;
+  // senão delega ao pai (próxima da fila).
   function handleEnded() {
     const audio = audioRef.current;
+    if (sleepEndOfTrack) {
+      setSleepEndOfTrack(false);
+      if (isPlayingRef.current) onTogglePlay();
+      return;
+    }
     if (repeat === "one" && audio) {
       audio.currentTime = 0;
       audio.play().catch(() => {});
@@ -346,6 +424,66 @@ export default function PlayerBar({
                   <span className="absolute inset-x-2 -bottom-0.5 mx-auto h-1 w-1 rounded-full bg-accent" />
                 )}
               </button>
+            </div>
+
+            {/* Volume + sleep timer */}
+            <div className="flex items-center gap-4">
+              <div className="flex flex-1 items-center gap-2">
+                <VolumeIcon muted={volume === 0} className="h-5 w-5 shrink-0 text-white/70" />
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={volume}
+                  onChange={(e) => setVolume(Number(e.target.value))}
+                  className="flex-1 accent-accent"
+                  aria-label="Volume"
+                />
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => setSleepMenu((m) => !m)}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    sleepActive ? "bg-accent text-black" : "bg-white/10 text-white/80"
+                  }`}
+                  aria-label="Sleep timer"
+                  title="Sleep timer"
+                >
+                  <ClockIcon className="h-4 w-4" />
+                  {sleepActive
+                    ? sleepEndOfTrack
+                      ? "fim"
+                      : `${sleepRemaining}m`
+                    : "Timer"}
+                </button>
+                {sleepMenu && (
+                  <div className="absolute bottom-full right-0 mb-2 w-44 overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl">
+                    {[
+                      { label: "15 minutos", value: 15 as const },
+                      { label: "30 minutos", value: 30 as const },
+                      { label: "1 hora", value: 60 as const },
+                      { label: "Fim da faixa", value: "track" as const },
+                    ].map((o) => (
+                      <button
+                        key={o.label}
+                        onClick={() => setSleep(o.value)}
+                        className="block w-full px-4 py-2.5 text-left text-sm hover:bg-white/10"
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                    {sleepActive && (
+                      <button
+                        onClick={() => setSleep(null)}
+                        className="block w-full border-t border-white/10 px-4 py-2.5 text-left text-sm text-red-400 hover:bg-white/10"
+                      >
+                        Desligar timer
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className="h-[max(1.5rem,env(safe-area-inset-bottom))]" />

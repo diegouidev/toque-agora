@@ -9,6 +9,7 @@ import {
   LibraryIcon,
   PlusIcon,
   SearchIcon,
+  ShareIcon,
   UploadIcon,
 } from "./icons";
 
@@ -19,10 +20,13 @@ interface Props {
   tab: Tab;
   onTab: (tab: Tab) => void;
   playlists: PlaylistSummary[];
+  sharedPlaylists: PlaylistSummary[];
   favCount: number;
   activeKey: string | null; // "fav" | `pl:${id}`
   onOpenFavorites: () => void;
   onOpenPlaylist: (pl: PlaylistSummary) => void;
+  onOpenShared: (pl: PlaylistSummary) => void;
+  onShare: (pl: PlaylistSummary) => void;
   onCreate: (name: string) => void;
   onDelete: (pl: PlaylistSummary) => void;
   onUpload: () => void;
@@ -42,10 +46,13 @@ export default function Sidebar({
   tab,
   onTab,
   playlists,
+  sharedPlaylists,
   favCount,
   activeKey,
   onOpenFavorites,
   onOpenPlaylist,
+  onOpenShared,
+  onShare,
   onCreate,
   onDelete,
   onUpload,
@@ -143,7 +150,7 @@ export default function Sidebar({
           {playlists.map((pl) => (
             <div
               key={pl.id}
-              className={`group flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition-colors ${
+              className={`group flex items-center gap-1 rounded-lg px-2 py-2 text-sm transition-colors ${
                 activeKey === `pl:${pl.id}` ? "bg-white/10 text-accent" : "hover:bg-white/5"
               }`}
             >
@@ -153,6 +160,14 @@ export default function Sidebar({
               >
                 <span className="truncate">{pl.name}</span>
                 <span className="ml-auto text-xs text-zinc-500">{pl.track_count}</span>
+              </button>
+              <button
+                onClick={() => onShare(pl)}
+                className="shrink-0 text-zinc-500 opacity-0 transition group-hover:opacity-100 hover:text-accent"
+                aria-label="Compartilhar playlist"
+                title="Compartilhar"
+              >
+                <ShareIcon className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={() => onDelete(pl)}
@@ -169,6 +184,34 @@ export default function Sidebar({
             <p className="px-2 py-3 text-xs text-zinc-500">
               Crie sua primeira playlist no +.
             </p>
+          )}
+
+          {sharedPlaylists.length > 0 && (
+            <>
+              <p className="px-2 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                Compartilhadas comigo
+              </p>
+              {sharedPlaylists.map((pl) => (
+                <button
+                  key={`shared-${pl.id}`}
+                  onClick={() => onOpenShared(pl)}
+                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors ${
+                    activeKey === `pl:${pl.id}` ? "bg-white/10 text-accent" : "hover:bg-white/5"
+                  }`}
+                >
+                  <ShareIcon className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {pl.name}
+                    {pl.owner_email && (
+                      <span className="block truncate text-[11px] text-zinc-500">
+                        por {pl.owner_email}
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-xs text-zinc-500">{pl.track_count}</span>
+                </button>
+              ))}
+            </>
           )}
         </div>
       </div>

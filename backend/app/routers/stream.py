@@ -12,6 +12,7 @@ from fastapi.responses import Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..access import can_access_track
 from ..archive_service import ArchiveServiceError, extract_track_bytes
 from ..auth import get_current_user
 from ..database import get_session
@@ -41,8 +42,8 @@ async def stream_track(
     if archive is None:
         raise HTTPException(status_code=404, detail="Arquivo de origem não encontrado.")
 
-    # Só o dono (ou admin) pode ouvir.
-    if not user.is_admin and archive.owner_id != user.id:
+    # Dono, admin, ou destinatário de uma playlist compartilhada com a faixa.
+    if not await can_access_track(session, user, track):
         raise HTTPException(status_code=403, detail="Acesso negado.")
 
     # Extrai SÓ esta faixa para memória (sem descompactar o resto no disco).

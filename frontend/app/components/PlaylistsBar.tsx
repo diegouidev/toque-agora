@@ -2,24 +2,30 @@
 
 import { useState } from "react";
 import type { PlaylistSummary } from "../lib/api";
-import { HeartIcon, PlayIcon, PlusIcon } from "./icons";
+import { HeartIcon, PlayIcon, PlusIcon, ShareIcon } from "./icons";
 
 interface Props {
   playlists: PlaylistSummary[];
+  sharedPlaylists?: PlaylistSummary[];
   favCount: number;
   activeKey: string | null; // "fav" | `pl:${id}`
   onOpenFavorites: () => void;
   onOpenPlaylist: (pl: PlaylistSummary) => void;
+  onOpenShared?: (pl: PlaylistSummary) => void;
+  onShare?: (pl: PlaylistSummary) => void;
   onCreate: (name: string) => void;
   onDelete: (pl: PlaylistSummary) => void;
 }
 
 export default function PlaylistsBar({
   playlists,
+  sharedPlaylists = [],
   favCount,
   activeKey,
   onOpenFavorites,
   onOpenPlaylist,
+  onOpenShared,
+  onShare,
   onCreate,
   onDelete,
 }: Props) {
@@ -88,6 +94,16 @@ export default function PlaylistsBar({
               {pl.name}
               <span className="opacity-70">{pl.track_count}</span>
             </button>
+            {onShare && (
+              <button
+                onClick={() => onShare(pl)}
+                className="opacity-0 transition group-hover:opacity-100 hover:text-accent"
+                aria-label="Compartilhar playlist"
+                title="Compartilhar"
+              >
+                <ShareIcon className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button
               onClick={() => onDelete(pl)}
               className="opacity-0 transition group-hover:opacity-100 hover:text-red-500"
@@ -97,6 +113,21 @@ export default function PlaylistsBar({
               ✕
             </button>
           </div>
+        ))}
+
+        {sharedPlaylists.map((pl) => (
+          <button
+            key={`shared-${pl.id}`}
+            onClick={() => onOpenShared?.(pl)}
+            className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm transition-colors ${
+              activeKey === `pl:${pl.id}` ? "bg-accent text-black" : "bg-white/5 hover:bg-white/10"
+            }`}
+            title={pl.owner_email ? `Compartilhada por ${pl.owner_email}` : undefined}
+          >
+            <ShareIcon className="h-3.5 w-3.5 opacity-70" />
+            {pl.name}
+            <span className="opacity-70">{pl.track_count}</span>
+          </button>
         ))}
       </div>
     </section>

@@ -2,12 +2,23 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_user_by_email
 from ..database import get_session
-from ..models import Archive, Band, Favorite, Playlist, PlaylistItem, Track, User
+from ..models import (
+    Archive,
+    Band,
+    Favorite,
+    Playlist,
+    PlaylistItem,
+    PlaylistShare,
+    Track,
+    User,
+)
 from ..schemas import (
     PlaylistCreate,
     PlaylistReorder,
+    PlaylistShareIn,
+    PlaylistShareOut,
     PlaylistSummary,
     PlaylistTrackIn,
     TrackOut,
@@ -141,6 +152,114 @@ async def _owned_playlist(playlist_id: int, user: User, session: AsyncSession) -
     return pl
 
 
+async def _shared_with(playlist_id: int, user_id: int, session: AsyncSession) -> bool:
+    res = await session.execute(
+        select(PlaylistShare.id).where(
+            PlaylistShare.playlist_id == playlist_id,
+            PlaylistShare.shared_with_id == user_id,
+        )
+    )
+    return res.first() is not None
+
+
+async def _owned_or_shared_playlist(
+    playlist_id: int, user: User, session: AsyncSession
+) -> Playlist:
+    """Leitura: o dono OU alguém com quem a playlist foi compartilhada."""
+    pl = await session.get(Playlist, playlist_id)
+    if pl is None:
+        raise HTTPException(status_code=404, detail="Playlist não encontrada.")
+    if pl.owner_id == user.id or await _shared_with(playlist_id, user.id, session):
+        return pl
+    raise HTTPException(status_code=404, detail="Playlist não encontrada.")
+
+
+# ---------------- Compartilhamento ----------------
+@router.get("/playlists/shared", response_model=list[PlaylistSummary])
+async def list_shared_playlists(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[PlaylistSummary]:
+    """Playlists que outros usuários compartilharam comigo."""
+    count_subq = (
+        select(PlaylistItem.playlist_id, func.count(PlaylistItem.id).label("c"))
+        .group_by(PlaylistItem.playlist_id)
+        .subquery()
+    )
+    res = await session.execute(
+        select(Playlist, func.coalesce(count_subq.c.c, 0), User.email)
+        .join(PlaylistShare, PlaylistShare.playlist_id == Playlist.id)
+        .join(User, User.id == Playlist.owner_id)
+        .outerjoin(count_subq, Playlist.id == count_subq.c.playlist_id)
+        .where(PlaylistShare.shared_with_id == user.id)
+        .order_by(PlaylistShare.created_at.desc())
+    )
+    return [
+        PlaylistSummary(
+            id=p.id, name=p.name, track_count=c, owner_email=owner_email, shared=True
+        )
+        for p, c, owner_email in res.all()
+    ]
+
+
+@router.post("/playlists/{playlist_id}/share", response_model=PlaylistShareOut, status_code=201)
+async def share_playlist(
+    playlist_id: int,
+    body: PlaylistShareIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> PlaylistShareOut:
+    """Compartilha a playlist (só o dono) com o usuário do email informado."""
+    await _owned_playlist(playlist_id, user, session)
+    target = await get_user_by_email(session, str(body.email))
+    if target is None:
+        raise HTTPException(status_code=404, detail="Nenhum usuário com esse email.")
+    if target.id == user.id:
+        raise HTTPException(status_code=400, detail="Você já é o dono desta playlist.")
+    if not await _shared_with(playlist_id, target.id, session):
+        session.add(
+            PlaylistShare(playlist_id=playlist_id, shared_with_id=target.id)
+        )
+        await session.commit()
+    return PlaylistShareOut(user_id=target.id, email=target.email)
+
+
+@router.get("/playlists/{playlist_id}/shares", response_model=list[PlaylistShareOut])
+async def list_playlist_shares(
+    playlist_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[PlaylistShareOut]:
+    """Lista com quem a playlist está compartilhada (só o dono)."""
+    await _owned_playlist(playlist_id, user, session)
+    res = await session.execute(
+        select(User.id, User.email)
+        .join(PlaylistShare, PlaylistShare.shared_with_id == User.id)
+        .where(PlaylistShare.playlist_id == playlist_id)
+        .order_by(User.email)
+    )
+    return [PlaylistShareOut(user_id=uid, email=email) for uid, email in res.all()]
+
+
+@router.delete("/playlists/{playlist_id}/share/{user_id}", status_code=204)
+async def unshare_playlist(
+    playlist_id: int,
+    user_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Remove o compartilhamento de um usuário (só o dono)."""
+    await _owned_playlist(playlist_id, user, session)
+    await session.execute(
+        delete(PlaylistShare).where(
+            PlaylistShare.playlist_id == playlist_id,
+            PlaylistShare.shared_with_id == user_id,
+        )
+    )
+    await session.commit()
+    return Response(status_code=204)
+
+
 @router.delete("/playlists/{playlist_id}", status_code=204)
 async def delete_playlist(
     playlist_id: int,
@@ -159,7 +278,7 @@ async def playlist_tracks(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> list[TrackOut]:
-    await _owned_playlist(playlist_id, user, session)
+    await _owned_or_shared_playlist(playlist_id, user, session)
     res = await session.execute(
         select(Track)
         .join(PlaylistItem, PlaylistItem.track_id == Track.id)

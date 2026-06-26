@@ -167,6 +167,23 @@ class Favorite(Base):
     track: Mapped["Track"] = relationship()
 
 
+class PlaylistShare(Base):
+    """Compartilhamento de uma playlist com outro usuário (acesso de leitura)."""
+
+    __tablename__ = "playlist_share"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    playlist_id: Mapped[int] = mapped_column(
+        ForeignKey("playlists.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    shared_with_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class PlayHistory(Base):
     """Registro de uma reprodução: faixa que o usuário tocou e quando.
 

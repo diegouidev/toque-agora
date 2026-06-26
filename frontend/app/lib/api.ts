@@ -18,6 +18,13 @@ export interface PlaylistSummary {
   id: number;
   name: string;
   track_count: number;
+  owner_email?: string | null;
+  shared?: boolean;
+}
+
+export interface PlaylistShareOut {
+  user_id: number;
+  email: string;
 }
 
 export interface BandSummary {
@@ -163,6 +170,46 @@ export async function deleteUser(userId: number): Promise<void> {
   if (!res.ok && res.status !== 204) throw new Error("Falha ao excluir usuário");
 }
 
+// ---------- Admin: visão geral ----------
+export interface AdminTotals {
+  users: number;
+  used_bytes: number;
+  archives: number;
+  bands: number;
+  tracks: number;
+  plays: number;
+}
+
+export interface AdminUserStat {
+  id: number;
+  email: string;
+  is_admin: boolean;
+  quota_bytes: number;
+  used_bytes: number;
+  archive_count: number;
+  track_count: number;
+  last_played_at: string | null;
+  created_at: string | null;
+}
+
+export interface TopBand {
+  id: number;
+  name: string;
+  plays: number;
+}
+
+export interface AdminOverview {
+  totals: AdminTotals;
+  users: AdminUserStat[];
+  top_bands: TopBand[];
+}
+
+export async function fetchAdminOverview(): Promise<AdminOverview> {
+  const res = await apiFetch("/api/admin/overview");
+  if (!res.ok) throw new Error("Falha ao carregar visão geral");
+  return res.json();
+}
+
 // ---------- Favoritos ----------
 export async function toggleFavorite(trackId: number, fav: boolean): Promise<void> {
   const res = await apiFetch(`/api/favorites/${trackId}`, {
@@ -231,6 +278,63 @@ export async function removeFromPlaylist(playlistId: number, trackId: number): P
     method: "DELETE",
   });
   if (!res.ok && res.status !== 204) throw new Error("Falha ao remover da playlist");
+}
+
+// ---------- Compartilhamento de playlists ----------
+export async function fetchSharedPlaylists(): Promise<PlaylistSummary[]> {
+  const res = await apiFetch("/api/playlists/shared");
+  if (!res.ok) throw new Error("Falha ao listar compartilhadas");
+  return res.json();
+}
+
+export async function sharePlaylist(
+  playlistId: number,
+  email: string,
+): Promise<PlaylistShareOut> {
+  const res = await apiFetch(`/api/playlists/${playlistId}/share`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao compartilhar");
+  }
+  return res.json();
+}
+
+export async function fetchPlaylistShares(playlistId: number): Promise<PlaylistShareOut[]> {
+  const res = await apiFetch(`/api/playlists/${playlistId}/shares`);
+  if (!res.ok) throw new Error("Falha ao listar compartilhamentos");
+  return res.json();
+}
+
+export async function unsharePlaylist(playlistId: number, userId: number): Promise<void> {
+  const res = await apiFetch(`/api/playlists/${playlistId}/share/${userId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok && res.status !== 204) throw new Error("Falha ao remover compartilhamento");
+}
+
+// ---------- Renomear banda / faixa ----------
+export async function renameBand(bandId: number, name: string): Promise<BandSummary> {
+  const res = await apiFetch(`/api/bands/${bandId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Falha ao renomear banda");
+  return res.json();
+}
+
+export async function renameTrack(trackId: number, name: string): Promise<Track> {
+  const res = await apiFetch(`/api/tracks/${trackId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Falha ao renomear faixa");
+  return res.json();
 }
 
 // ---------- Busca ----------

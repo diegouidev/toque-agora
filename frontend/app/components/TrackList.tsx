@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Track } from "../lib/api";
-import { DragIcon, HeartIcon, PlayIcon, PlusIcon, QueueIcon } from "./icons";
+import { DragIcon, EditIcon, HeartIcon, PlayIcon, PlusIcon, QueueIcon } from "./icons";
 
 interface Props {
   tracks: Track[];
@@ -12,6 +12,7 @@ interface Props {
   onToggleFavorite?: (track: Track) => void;
   onAddToPlaylist?: (track: Track) => void;
   onPlayNext?: (track: Track) => void; // "Tocar depois" (adiciona à fila)
+  onRename?: (track: Track) => void; // renomear (dono/admin)
   onRemove?: (track: Track) => void; // contexto de playlist
   onReorder?: (newOrder: Track[]) => void; // habilita drag-and-drop (playlist)
 }
@@ -31,6 +32,7 @@ export default function TrackList({
   onToggleFavorite,
   onAddToPlaylist,
   onPlayNext,
+  onRename,
   onRemove,
   onReorder,
 }: Props) {
@@ -167,6 +169,21 @@ export default function TrackList({
                   title="Adicionar a playlist"
                 >
                   <PlusIcon className="h-4 w-4" />
+                </button>
+              )}
+
+              {/* Renomear (dono/admin) */}
+              {onRename && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRename(track);
+                  }}
+                  className="shrink-0 p-1 text-zinc-500 opacity-0 transition hover:text-white group-hover:opacity-100"
+                  aria-label="Renomear faixa"
+                  title="Renomear"
+                >
+                  <EditIcon className="h-4 w-4" />
                 </button>
               )}
 

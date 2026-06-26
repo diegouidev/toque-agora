@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
+from ..access import can_access_band
 from ..archive_service import (
     ArchiveServiceError,
     content_type_for_image,
@@ -13,7 +14,7 @@ from ..archive_service import (
 from ..auth import get_current_user
 from ..database import get_session
 from ..models import Archive, Band, Favorite, Track, User
-from ..schemas import BandSummary, TrackOut
+from ..schemas import BandSummary, NameUpdate, TrackOut
 
 router = APIRouter(prefix="/api", tags=["bands"])
 
@@ -109,7 +110,7 @@ async def get_band_cover(
     archive = await session.get(Archive, band.archive_id)
     if archive is None:
         raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
-    if not user.is_admin and archive.owner_id != user.id:
+    if not await can_access_band(session, user, band_id):
         raise HTTPException(status_code=403, detail="Acesso negado.")
 
     try:
@@ -128,6 +129,62 @@ async def get_band_cover(
             "X-Content-Type-Options": "nosniff",
             "Content-Disposition": "inline",
         },
+    )
+
+
+@router.patch("/bands/{band_id}", response_model=BandSummary)
+async def rename_band(
+    band_id: int,
+    body: NameUpdate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> BandSummary:
+    """Renomeia o nome exibido de uma banda (dono ou admin)."""
+    band = await _band_owned_or_admin(band_id, user, session)
+    band.name = body.name.strip()
+    await session.commit()
+    count = await session.scalar(
+        select(func.count(Track.id)).where(Track.band_id == band_id)
+    )
+    archive = await session.get(Archive, band.archive_id)
+    return BandSummary(
+        id=band.id,
+        archive_id=band.archive_id,
+        name=band.name,
+        kind=archive.kind if archive else "",
+        track_count=int(count or 0),
+        has_cover=band.cover_name is not None,
+    )
+
+
+@router.patch("/tracks/{track_id}", response_model=TrackOut)
+async def rename_track(
+    track_id: int,
+    body: NameUpdate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> TrackOut:
+    """Renomeia o nome exibido de uma faixa (dono ou admin)."""
+    track = await session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(status_code=404, detail="Faixa não encontrada.")
+    await _band_owned_or_admin(track.band_id, user, session)
+    track.display_name = body.name.strip()
+    await session.commit()
+    fav = await session.scalar(
+        select(Favorite.id).where(
+            Favorite.owner_id == user.id, Favorite.track_id == track_id
+        )
+    )
+    return TrackOut(
+        id=track.id,
+        band_id=track.band_id,
+        name=track.name,
+        display_name=track.display_name,
+        size=track.size,
+        index=track.index,
+        duration=track.duration,
+        is_favorite=fav is not None,
     )
 
 

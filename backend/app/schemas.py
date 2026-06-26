@@ -69,6 +69,24 @@ class PlaylistSummary(BaseModel):
     id: int
     name: str
     track_count: int = 0
+    # Preenchidos quando a playlist é "compartilhada comigo".
+    owner_email: str | None = None
+    shared: bool = False
+
+
+class PlaylistShareIn(BaseModel):
+    email: EmailStr
+
+
+class PlaylistShareOut(BaseModel):
+    user_id: int
+    email: str
+
+
+class NameUpdate(BaseModel):
+    """Renomear banda (name) ou faixa (display_name)."""
+
+    name: str = Field(min_length=1, max_length=512)
 
 
 class PlaylistCreate(BaseModel):
@@ -135,3 +153,37 @@ class UploadComplete(BaseModel):
 
     upload_id: str = Field(min_length=8, max_length=64)
     filename: str = Field(min_length=1, max_length=512)
+
+
+# ---------------- Admin (estatísticas) ----------------
+class AdminTotals(BaseModel):
+    users: int = 0
+    used_bytes: int = 0
+    archives: int = 0
+    bands: int = 0
+    tracks: int = 0
+    plays: int = 0
+
+
+class AdminUserStat(BaseModel):
+    id: int
+    email: str
+    is_admin: bool
+    quota_bytes: int
+    used_bytes: int
+    archive_count: int = 0
+    track_count: int = 0
+    last_played_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class TopBand(BaseModel):
+    id: int
+    name: str
+    plays: int
+
+
+class AdminOverview(BaseModel):
+    totals: AdminTotals
+    users: list[AdminUserStat] = []
+    top_bands: list[TopBand] = []
