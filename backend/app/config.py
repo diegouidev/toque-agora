@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # ----- Autenticação / usuários -----
     # Valor sentinela: se permanecer este, o app recusa subir em produção.
     jwt_secret: str = "CHANGE_ME"
-    jwt_expire_hours: int = 24 * 14  # 14 dias
+    jwt_expire_hours: int = 24 * 7  # 7 dias
 
     # Super admin (criado no startup se não existir).
     admin_email: str = "admin@toqueagora.local"

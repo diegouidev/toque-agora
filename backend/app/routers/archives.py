@@ -31,8 +31,17 @@ async def list_bands(
         .subquery()
     )
     query = (
-        select(Band, Archive.kind, func.coalesce(count_subq.c.track_count, 0))
+        select(
+            Band,
+            Archive.kind,
+            func.coalesce(count_subq.c.track_count, 0),
+            User.id,
+            User.display_name,
+            User.email,
+            User.avatar_filename,
+        )
         .join(Archive, Band.archive_id == Archive.id)
+        .join(User, User.id == Archive.owner_id)
         .outerjoin(count_subq, Band.id == count_subq.c.band_id)
         .order_by(Archive.created_at.desc(), Band.name)
     )
@@ -48,8 +57,11 @@ async def list_bands(
             kind=kind,
             track_count=track_count,
             has_cover=band.cover_name is not None,
+            owner_id=owner_id,
+            owner_name=(owner_name or owner_email),
+            owner_has_avatar=owner_avatar is not None,
         )
-        for band, kind, track_count in result.all()
+        for band, kind, track_count, owner_id, owner_name, owner_email, owner_avatar in result.all()
     ]
 
 

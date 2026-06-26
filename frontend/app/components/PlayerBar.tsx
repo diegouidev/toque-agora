@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { coverUrl, recordPlay, streamUrl, type Track } from "../lib/api";
 import {
+  BroomIcon,
   ChevronDownIcon,
   ClockIcon,
   MusicIcon,
@@ -31,6 +32,7 @@ interface Props {
   onPrev: () => void;
   onEnded: () => void;
   onOpenQueue: () => void;
+  onClearQueue: () => void;
   hasNext: boolean;
   hasPrev: boolean;
   // Persistência: tempo inicial ao restaurar (seek na faixa retomada) e
@@ -77,6 +79,7 @@ export default function PlayerBar({
   onPrev,
   onEnded,
   onOpenQueue,
+  onClearQueue,
   hasNext,
   hasPrev,
   resumeTime,
@@ -310,29 +313,31 @@ export default function PlayerBar({
       />
 
       {/* ----- Mini barra (rodapé) ----- */}
-      <footer className="fixed inset-x-0 bottom-[57px] z-30 border-t border-white/10 bg-black/80 backdrop-blur-xl lg:bottom-0 lg:pb-[env(safe-area-inset-bottom)]">
-        <button
-          onClick={() => setExpanded(true)}
-          className="flex w-full items-center gap-3 px-4 py-2.5 text-left"
-          aria-label="Abrir player"
-        >
-          <div className={`relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br ${grad}`}>
-            {coverImg ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={coverImg} alt="" className="absolute inset-0 h-full w-full object-cover" />
-            ) : (
-              <MusicIcon className="h-5 w-5 text-white/90" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{track.display_name}</p>
-            <p className="truncate text-xs text-zinc-400">{bandName ?? "—"}</p>
-          </div>
-          {/* Volume — desktop: range inline; mobile: ícone abre popover */}
-          <span
-            className="relative flex items-center"
-            onClick={(e) => e.stopPropagation()}
+      {/* lg:left-64 = não cobre o sidebar (Admin/Sair ficam clicáveis no desktop). */}
+      <footer className="fixed inset-x-0 bottom-[57px] z-30 border-t border-white/10 bg-black/80 backdrop-blur-xl lg:bottom-0 lg:left-64 lg:pb-[env(safe-area-inset-bottom)]">
+        <div className="flex w-full items-center gap-3 px-4 py-2.5">
+          {/* Capa + título: abre o Now Playing */}
+          <button
+            onClick={() => setExpanded(true)}
+            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+            aria-label="Abrir player"
           >
+            <div className={`relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br ${grad}`}>
+              {coverImg ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={coverImg} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              ) : (
+                <MusicIcon className="h-5 w-5 text-white/90" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">{track.display_name}</p>
+              <p className="truncate text-xs text-zinc-400">{bandName ?? "—"}</p>
+            </div>
+          </button>
+
+          {/* Volume — desktop: range inline; mobile: ícone abre popover */}
+          <div className="relative flex items-center">
             <button
               type="button"
               onClick={() => setVolMenu((v) => !v)}
@@ -342,7 +347,6 @@ export default function PlayerBar({
             >
               <VolumeIcon muted={volume === 0} className="h-5 w-5" />
             </button>
-            {/* Range inline (desktop) */}
             <input
               type="range"
               min={0}
@@ -354,54 +358,63 @@ export default function PlayerBar({
               style={{ ["--fill" as string]: `${volume * 100}%` }}
               aria-label="Volume"
             />
-            {/* Popover (mobile/tablet) */}
             {volMenu && (
-              <div className="absolute bottom-12 right-0 z-40 rounded-xl border border-white/10 bg-zinc-900 p-3 shadow-2xl lg:hidden">
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={volume}
-                  onChange={(e) => setVolume(Number(e.target.value))}
-                  className="slider-visible slider-fill w-36"
-                  style={{ ["--fill" as string]: `${volume * 100}%` }}
-                  aria-label="Volume"
-                  autoFocus
-                  onBlur={() => setVolMenu(false)}
-                />
-              </div>
+              <>
+                {/* backdrop pra fechar ao tocar fora (mobile) */}
+                <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setVolMenu(false)} />
+                <div className="absolute bottom-12 right-0 z-50 rounded-xl border border-white/10 bg-zinc-900 p-3 shadow-2xl lg:hidden">
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={volume}
+                    onChange={(e) => setVolume(Number(e.target.value))}
+                    className="slider-visible slider-fill w-40"
+                    style={{ ["--fill" as string]: `${volume * 100}%` }}
+                    aria-label="Volume"
+                  />
+                </div>
+              </>
             )}
-          </span>
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenQueue();
-            }}
+          </div>
+
+          {/* Limpar fila (vassoura) */}
+          <button
+            type="button"
+            onClick={onClearQueue}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-300 hover:text-white"
+            aria-label="Limpar fila"
+            title="Limpar fila"
+          >
+            <BroomIcon className="h-5 w-5" />
+          </button>
+
+          {/* Fila */}
+          <button
+            type="button"
+            onClick={onOpenQueue}
             className="hidden h-10 w-10 items-center justify-center rounded-full text-zinc-300 hover:text-white sm:flex"
             aria-label="Fila"
             title="Fila"
           >
             <QueueIcon className="h-5 w-5" />
-          </span>
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onTogglePlay();
-            }}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black"
+          </button>
+
+          {/* Play/Pause */}
+          <button
+            type="button"
+            onClick={onTogglePlay}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-black"
+            aria-label={isPlaying ? "Pausar" : "Tocar"}
           >
             {isPlaying ? (
               <PauseIcon className="h-5 w-5" />
             ) : (
               <PlayIcon className="ml-0.5 h-5 w-5" />
             )}
-          </span>
-        </button>
+          </button>
+        </div>
         {/* mini progress fininho */}
         <div className="h-0.5 w-full bg-white/10">
           <div

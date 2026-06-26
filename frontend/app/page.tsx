@@ -256,6 +256,14 @@ export default function Home() {
     setIsPlaying(true);
   }
 
+  // Limpa a fila e o estado persistido (botão vassoura).
+  function clearQueue() {
+    setQueue([]);
+    setCurrentIndex(null);
+    setIsPlaying(false);
+    clearPlayerState();
+  }
+
   async function playFrom(open: () => Promise<Track[]>) {
     const t = await open();
     if (t.length > 0) startQueue(t, 0);
@@ -482,52 +490,98 @@ export default function Home() {
   // Painel de detalhe (banda / playlist / curtidas).
   const detail = view && (
     <section className="overflow-hidden rounded-2xl border border-white/5 bg-surface/40 shadow-xl backdrop-blur">
-      <div className="flex items-center gap-4 border-b border-white/5 px-4 py-4 sm:px-5">
-        <button
-          onClick={() => setView(null)}
-          className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
-        >
-          ← Voltar
-        </button>
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/10">
-          {view.kind === "band" && view.band.has_cover ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={coverUrl(view.band.id)}
-              alt=""
-              className="h-full w-full object-cover"
+      {view.kind === "band" ? (
+        /* ----- Hero do CD (capa grande + perfil de quem postou) ----- */
+        <div className="relative border-b border-white/5">
+          {/* fundo desfocado com a própria capa */}
+          {view.band.has_cover && (
+            <div
+              className="absolute inset-0 -z-0 bg-cover bg-center opacity-30 blur-2xl"
+              style={{ backgroundImage: `url(${coverUrl(view.band.id)})` }}
             />
-          ) : (
-            <MusicIcon className="h-6 w-6 text-white/80" />
           )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate text-lg font-bold">{viewTitle}</h3>
-            {view.kind === "band" && (
+          <div className="relative z-10 flex flex-col gap-4 p-5 sm:flex-row sm:items-end">
+            <button
+              onClick={() => setView(null)}
+              className="absolute left-4 top-4 rounded-full bg-black/40 px-3 py-1.5 text-xs font-medium backdrop-blur hover:bg-black/60"
+            >
+              ← Voltar
+            </button>
+            {/* Capa grande */}
+            <div className="mx-auto mt-8 flex h-40 w-40 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 shadow-2xl shadow-black/50 sm:mx-0 sm:mt-0 sm:h-48 sm:w-48">
+              {view.band.has_cover ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={coverUrl(view.band.id)} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <MusicIcon className="h-16 w-16 text-white/80" />
+              )}
+            </div>
+            {/* Infos */}
+            <div className="min-w-0 flex-1 text-center sm:text-left">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-300">CD</p>
+              <div className="flex items-center justify-center gap-2 sm:justify-start">
+                <h3 className="truncate text-2xl font-black sm:text-4xl">{viewTitle}</h3>
+                <button
+                  onClick={() => onRenameBand(view.band)}
+                  className="shrink-0 text-zinc-400 hover:text-white"
+                  aria-label="Renomear banda"
+                  title="Renomear banda"
+                >
+                  <EditIcon className="h-4 w-4" />
+                </button>
+              </div>
+              {/* Perfil de quem postou */}
+              {view.band.owner_name && (
+                <div className="mt-2 flex items-center justify-center gap-2 sm:justify-start">
+                  <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-accent to-indigo-600 text-[9px] font-black">
+                    {view.band.owner_has_avatar && view.band.owner_id ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={avatarUrl(view.band.owner_id)} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      view.band.owner_name.slice(0, 2).toUpperCase()
+                    )}
+                  </span>
+                  <span className="truncate text-sm font-medium text-zinc-200">
+                    {view.band.owner_name}
+                  </span>
+                </div>
+              )}
+              <p className="mt-1 text-xs text-zinc-400">{viewTracks.length} faixas</p>
               <button
-                onClick={() => onRenameBand(view.band)}
-                className="shrink-0 text-zinc-500 hover:text-white"
-                aria-label="Renomear banda"
-                title="Renomear banda"
+                onClick={() => viewTracks.length > 0 && startQueue(viewTracks, 0)}
+                disabled={viewTracks.length === 0}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-black transition-transform hover:scale-105 disabled:opacity-40"
               >
-                <EditIcon className="h-4 w-4" />
+                <PlayIcon className="h-4 w-4" /> Tocar
               </button>
-            )}
+            </div>
           </div>
-          <p className="text-xs text-zinc-400">
-            {viewTracks.length} faixas
-            {sharedOwner && <span> · compartilhada por {sharedOwner}</span>}
-          </p>
         </div>
-        <button
-          onClick={() => viewTracks.length > 0 && startQueue(viewTracks, 0)}
-          disabled={viewTracks.length === 0}
-          className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-5 py-2 text-sm font-semibold text-black transition-transform hover:scale-105 disabled:opacity-40"
-        >
-          <PlayIcon className="h-4 w-4" /> Tocar
-        </button>
-      </div>
+      ) : (
+        /* ----- Header compacto (playlist / curtidas) ----- */
+        <div className="flex items-center gap-4 border-b border-white/5 px-4 py-4 sm:px-5">
+          <button
+            onClick={() => setView(null)}
+            className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
+          >
+            ← Voltar
+          </button>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-lg font-bold">{viewTitle}</h3>
+            <p className="text-xs text-zinc-400">
+              {viewTracks.length} faixas
+              {sharedOwner && <span> · compartilhada por {sharedOwner}</span>}
+            </p>
+          </div>
+          <button
+            onClick={() => viewTracks.length > 0 && startQueue(viewTracks, 0)}
+            disabled={viewTracks.length === 0}
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-5 py-2 text-sm font-semibold text-black transition-transform hover:scale-105 disabled:opacity-40"
+          >
+            <PlayIcon className="h-4 w-4" /> Tocar
+          </button>
+        </div>
+      )}
       <div className="scroll-area max-h-[60vh] overflow-y-auto p-2">
         <TrackList
           tracks={viewTracks}
@@ -711,6 +765,7 @@ export default function Home() {
         onPrev={goPrev}
         onEnded={() => goNext(true)}
         onOpenQueue={() => setShowQueue(true)}
+        onClearQueue={clearQueue}
         hasNext={queue.length > 0}
         hasPrev={queue.length > 0}
         resumeTime={resumeTime}

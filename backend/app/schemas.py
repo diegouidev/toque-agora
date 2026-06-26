@@ -151,6 +151,10 @@ class BandSummary(BaseModel):
     kind: str
     track_count: int
     has_cover: bool = False
+    # Dono do CD (quem postou) — para o hero da view de banda.
+    owner_id: int | None = None
+    owner_name: str | None = None
+    owner_has_avatar: bool = False
 
 
 class BandOut(BaseModel):

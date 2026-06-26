@@ -34,6 +34,9 @@ export interface BandSummary {
   kind: string; // "rar" | "zip"
   track_count: number;
   has_cover: boolean;
+  owner_id: number | null;
+  owner_name: string | null;
+  owner_has_avatar: boolean;
 }
 
 export interface UploadError {
