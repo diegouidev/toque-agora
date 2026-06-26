@@ -63,12 +63,21 @@ export interface QuotaExceeded {
   whatsapp: string;
 }
 
+export interface Plan {
+  id: number;
+  name: string;
+  categories: Category[];
+  user_count: number;
+}
+
 export interface Me {
   id: number;
   email: string;
   display_name: string | null;
   has_avatar: boolean;
   is_admin: boolean;
+  can_upload: boolean;
+  plan_name: string | null;
   quota_bytes: number;
   used_bytes: number;
   quota_gb: number;
@@ -193,6 +202,41 @@ export async function setBandCategories(
   return res.json();
 }
 
+// ---------- Planos (admin) ----------
+export async function fetchPlans(): Promise<Plan[]> {
+  const res = await apiFetch("/api/plans");
+  if (!res.ok) throw new Error("Falha ao listar planos");
+  return res.json();
+}
+export async function createPlan(name: string): Promise<Plan> {
+  const res = await apiFetch("/api/plans", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao criar plano");
+  }
+  return res.json();
+}
+export async function setPlanCategories(
+  planId: number,
+  categoryIds: number[],
+): Promise<Plan> {
+  const res = await apiFetch(`/api/plans/${planId}/categories`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category_ids: categoryIds }),
+  });
+  if (!res.ok) throw new Error("Falha ao atualizar categorias do plano");
+  return res.json();
+}
+export async function deletePlan(id: number): Promise<void> {
+  const res = await apiFetch(`/api/plans/${id}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error("Falha ao excluir plano");
+}
+
 export async function fetchBandTracks(bandId: number): Promise<Track[]> {
   const res = await apiFetch(`/api/bands/${bandId}/tracks`);
   if (!res.ok) throw new Error("Falha ao listar faixas");
@@ -216,6 +260,8 @@ export async function createUser(body: {
   password: string;
   quota_gb: number;
   is_admin: boolean;
+  can_upload?: boolean;
+  plan_id?: number | null;
 }): Promise<void> {
   const res = await apiFetch("/api/users", {
     method: "POST",
@@ -233,6 +279,8 @@ interface UserPatch {
   password?: string;
   display_name?: string;
   is_active?: boolean;
+  can_upload?: boolean;
+  plan_id?: number | null;
 }
 export async function updateUser(userId: number, patch: UserPatch): Promise<void> {
   const res = await apiFetch(`/api/users/${userId}`, {
@@ -325,6 +373,9 @@ export interface AdminUserStat {
   is_admin: boolean;
   is_active: boolean;
   has_avatar: boolean;
+  can_upload: boolean;
+  plan_id: number | null;
+  plan_name: string | null;
   quota_bytes: number;
   used_bytes: number;
   archive_count: number;

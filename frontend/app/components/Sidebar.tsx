@@ -87,13 +87,15 @@ export default function Sidebar({
             {label}
           </button>
         ))}
-        <button
-          onClick={onUpload}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-zinc-400 transition-colors hover:text-white"
-        >
-          <UploadIcon className="h-5 w-5" />
-          Enviar
-        </button>
+        {me.can_upload && (
+          <button
+            onClick={onUpload}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-zinc-400 transition-colors hover:text-white"
+          >
+            <UploadIcon className="h-5 w-5" />
+            Enviar
+          </button>
+        )}
       </nav>
 
       {/* Playlists + Curtidas */}

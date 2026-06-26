@@ -8,7 +8,7 @@ from fastapi import HTTPException
 
 from ..auth import require_admin, used_bytes_for
 from ..database import get_session
-from ..models import Archive, Band, PlayHistory, Playlist, PlaylistItem, Track, User
+from ..models import Archive, Band, PlayHistory, Plan, Playlist, PlaylistItem, Track, User
 from ..schemas import (
     AdminOverview,
     AdminTotals,
@@ -76,10 +76,12 @@ async def overview(
             func.coalesce(arch_subq.c.used_bytes, 0),
             func.coalesce(track_subq.c.track_count, 0),
             last_play_subq.c.last_played_at,
+            Plan.name,
         )
         .outerjoin(arch_subq, arch_subq.c.uid == User.id)
         .outerjoin(track_subq, track_subq.c.uid == User.id)
         .outerjoin(last_play_subq, last_play_subq.c.uid == User.id)
+        .outerjoin(Plan, Plan.id == User.plan_id)
         .order_by(User.created_at)
     )
     users = [
@@ -90,6 +92,9 @@ async def overview(
             is_admin=u.is_admin,
             is_active=u.is_active,
             has_avatar=u.avatar_filename is not None,
+            can_upload=u.can_upload,
+            plan_id=u.plan_id,
+            plan_name=plan_name,
             quota_bytes=u.quota_bytes,
             used_bytes=int(used_bytes),
             archive_count=int(archive_count),
@@ -97,7 +102,7 @@ async def overview(
             last_played_at=last_played_at,
             created_at=u.created_at,
         )
-        for u, archive_count, used_bytes, track_count, last_played_at in rows.all()
+        for u, archive_count, used_bytes, track_count, last_played_at, plan_name in rows.all()
     ]
 
     # ----- Bandas mais tocadas (global) -----

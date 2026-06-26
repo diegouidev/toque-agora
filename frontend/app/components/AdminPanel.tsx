@@ -6,6 +6,7 @@ import {
   type AdminUserDetail,
   type AdminUserStat,
   type Category,
+  type Plan,
   type PlaylistSummary,
   avatarUrl,
   createCategory,
@@ -16,10 +17,13 @@ import {
   fetchAdminUser,
   fetchAdminUserPlaylists,
   fetchCategories,
+  fetchPlans,
   resetUserPassword,
   setUserBlocked,
+  updateUser,
   updateUserQuota,
 } from "../lib/api";
+import PlansManager from "./PlansManager";
 
 const GB = 1024 * 1024 * 1024;
 
@@ -42,6 +46,9 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [cats, setCats] = useState<Category[]>([]);
   const [newCat, setNewCat] = useState("");
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [canUpload, setCanUpload] = useState(true);
+  const [planId, setPlanId] = useState<string>(""); // "" = sem plano
 
   async function loadCats() {
     try {
@@ -67,8 +74,16 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
     loadCats();
   }
 
+  async function loadPlans() {
+    try {
+      setPlans(await fetchPlans());
+    } catch {
+      /* ignore */
+    }
+  }
   async function load() {
     loadCats();
+    loadPlans();
     try {
       setData(await fetchAdminOverview());
     } catch {
@@ -88,10 +103,14 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
         password,
         quota_gb: Number(quota) || 5,
         is_admin: false,
+        can_upload: canUpload,
+        plan_id: planId ? Number(planId) : null,
       });
       setEmail("");
       setPassword("");
       setQuota("5");
+      setCanUpload(true);
+      setPlanId("");
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao criar");
@@ -141,6 +160,30 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
     try {
       await resetUserPassword(u.id, pwd);
       alert("Senha redefinida.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Falha");
+    }
+  }
+
+  async function toggleUpload(u: AdminUserStat) {
+    try {
+      await updateUser(u.id, { can_upload: !u.can_upload });
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Falha");
+    }
+  }
+
+  async function changePlan(u: AdminUserStat) {
+    const opts = plans.map((p) => `${p.id}=${p.name}`).join(", ");
+    const val = prompt(
+      `Plano de ${u.email}. Digite o ID do plano (0 = sem plano).\nDisponíveis: ${opts || "nenhum"}`,
+      u.plan_id ? String(u.plan_id) : "0",
+    );
+    if (val == null) return;
+    try {
+      await updateUser(u.id, { plan_id: Number(val) || 0 });
+      load();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Falha");
     }
@@ -267,11 +310,37 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
             minLength={8}
             className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none focus:border-accent"
           />
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={canUpload}
+                onChange={(e) => setCanUpload(e.target.checked)}
+                className="h-4 w-4 accent-accent"
+              />
+              Pode enviar (upload)
+            </label>
+            <select
+              value={planId}
+              onChange={(e) => setPlanId(e.target.value)}
+              className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none focus:border-accent"
+            >
+              <option value="">Sem plano</option>
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  Plano: {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
           {error && <p className="text-sm text-red-400">{error}</p>}
           <button className="w-full rounded-full bg-accent py-2 text-sm font-bold text-black">
             Criar usuário
           </button>
         </form>
+
+        {/* Planos */}
+        <PlansManager />
 
         {/* Lista de usuários com estatísticas */}
         <div className="space-y-2">
@@ -299,7 +368,14 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                   </p>
                   <p className="text-xs text-zinc-400">
                     {fmtBytes(u.used_bytes)} / {(u.quota_bytes / GB).toFixed(0)} GB ·{" "}
-                    {u.track_count} faixas · ativo {fmtDate(u.last_played_at)}
+                    {u.track_count} faixas
+                    {!u.is_admin && (
+                      <>
+                        {" · "}
+                        {u.can_upload ? "envia" : "ouvinte"}
+                        {u.plan_name ? ` · Plano: ${u.plan_name}` : " · sem plano"}
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
@@ -329,6 +405,18 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                       className="rounded-full bg-white/10 px-3 py-1 text-xs hover:bg-white/20"
                     >
                       {u.is_active ? "Bloquear" : "Desbloquear"}
+                    </button>
+                    <button
+                      onClick={() => changePlan(u)}
+                      className="rounded-full bg-white/10 px-3 py-1 text-xs hover:bg-white/20"
+                    >
+                      Plano
+                    </button>
+                    <button
+                      onClick={() => toggleUpload(u)}
+                      className="rounded-full bg-white/10 px-3 py-1 text-xs hover:bg-white/20"
+                    >
+                      {u.can_upload ? "Bloq. upload" : "Lib. upload"}
                     </button>
                     <button
                       onClick={() => remove(u)}

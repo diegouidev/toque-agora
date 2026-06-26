@@ -50,6 +50,15 @@ def _quota_exceeded_http(used: int, quota: int) -> HTTPException:
     )
 
 
+def _require_upload(user: User) -> None:
+    """Bloqueia contas sem permissão de upload (ouvintes)."""
+    if not user.can_upload:
+        raise HTTPException(
+            status_code=403,
+            detail="Sua conta não tem permissão para enviar arquivos.",
+        )
+
+
 @router.post("/upload", response_model=UploadResult, status_code=201)
 async def upload_archives(
     files: list[UploadFile],
@@ -62,6 +71,7 @@ async def upload_archives(
     uma banda com o nome do arquivo. Erros em um arquivo não impedem os demais.
     Respeita a quota do usuário (soma dos arquivos no disco).
     """
+    _require_upload(user)
     if not files:
         raise HTTPException(status_code=400, detail="Nenhum arquivo enviado.")
 
@@ -131,6 +141,7 @@ async def upload_chunk(
     Cada requisição é pequena (o cliente fatia em <100 MB) para passar pelo
     limite de corpo do proxy/Cloudflare. Respeita quota e tamanho máximo.
     """
+    _require_upload(user)
     os.makedirs(settings.data_dir, exist_ok=True)
     part_path = _part_path(upload_id)
 
@@ -173,6 +184,7 @@ async def upload_complete(
     session: AsyncSession = Depends(get_session),
 ) -> UploadResult:
     """Finaliza: promove o .part a arquivo definitivo e indexa as bandas."""
+    _require_upload(user)
     part_path = _part_path(body.upload_id)
     if not os.path.exists(part_path):
         raise HTTPException(status_code=404, detail="Upload não encontrado ou expirado.")

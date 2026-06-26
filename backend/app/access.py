@@ -1,13 +1,49 @@
 """Autorização de acesso a faixas/bandas.
 
-Centraliza a regra de quem pode ouvir/ver uma faixa: o dono do arquivo, o admin,
-ou um usuário com quem alguma playlist contendo a faixa foi compartilhada.
+Quem pode ouvir/ver uma faixa: o dono do arquivo, o admin, um usuário com quem
+uma playlist contendo a faixa foi compartilhada, OU um ouvinte cujo **plano**
+inclui alguma categoria daquela banda (venda de repertório).
 """
 
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import Archive, Band, PlaylistItem, PlaylistShare, Track, User
+from .models import (
+    Archive,
+    Band,
+    PlaylistItem,
+    PlaylistShare,
+    Track,
+    User,
+    band_categories,
+    plan_categories,
+)
+
+
+async def plan_category_ids(session: AsyncSession, user: User) -> set[int]:
+    """Categorias liberadas pelo plano do usuário (vazio se sem plano)."""
+    if user.plan_id is None:
+        return set()
+    res = await session.execute(
+        select(plan_categories.c.category_id).where(
+            plan_categories.c.plan_id == user.plan_id
+        )
+    )
+    return set(res.scalars().all())
+
+
+async def _band_in_plan(session: AsyncSession, user: User, band_id: int) -> bool:
+    """True se a banda tem alguma categoria dentro do plano do usuário."""
+    if user.plan_id is None:
+        return False
+    stmt = select(
+        exists().where(
+            band_categories.c.band_id == band_id,
+            band_categories.c.category_id == plan_categories.c.category_id,
+            plan_categories.c.plan_id == user.plan_id,
+        )
+    )
+    return bool(await session.scalar(stmt))
 
 
 async def track_shared_with(
@@ -27,12 +63,14 @@ async def track_shared_with(
 async def can_access_track(
     session: AsyncSession, user: User, track: Track
 ) -> bool:
-    """Admin, dono do arquivo, ou destinatário de uma playlist com a faixa."""
+    """Admin, dono, playlist compartilhada, ou plano que inclui a categoria da banda."""
     if user.is_admin:
         return True
     band = await session.get(Band, track.band_id)
     archive = await session.get(Archive, band.archive_id) if band else None
     if archive is not None and archive.owner_id == user.id:
+        return True
+    if band is not None and await _band_in_plan(session, user, band.id):
         return True
     return await track_shared_with(session, user.id, track.id)
 
@@ -40,7 +78,7 @@ async def can_access_track(
 async def can_access_band(
     session: AsyncSession, user: User, band_id: int
 ) -> bool:
-    """Acesso à banda (ex.: capa): dono/admin, ou alguma faixa dela compartilhada."""
+    """Acesso à banda (ex.: capa/faixas): dono/admin, plano, ou playlist compartilhada."""
     if user.is_admin:
         return True
     band = await session.get(Band, band_id)
@@ -49,7 +87,8 @@ async def can_access_band(
     archive = await session.get(Archive, band.archive_id)
     if archive is not None and archive.owner_id == user.id:
         return True
-    # Alguma faixa desta banda está numa playlist compartilhada com o usuário?
+    if await _band_in_plan(session, user, band_id):
+        return True
     stmt = select(
         exists().where(
             PlaylistShare.shared_with_id == user.id,

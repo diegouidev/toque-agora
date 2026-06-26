@@ -672,7 +672,7 @@ export default function Home() {
           onPlay={(b) => playFrom(() => openBand(b))}
           onDelete={onDeleteBand}
         />
-      ) : (
+      ) : me.can_upload ? (
         <div className="rounded-2xl border border-dashed border-white/10 px-6 py-12 text-center">
           <p className="text-sm text-zinc-400">
             Sua coleção está vazia. Envie um <span className="font-mono">.rar</span>/
@@ -684,6 +684,25 @@ export default function Home() {
           >
             <UploadIcon className="h-4 w-4" /> Enviar coleção
           </button>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-white/10 px-6 py-12 text-center">
+          <p className="text-sm text-zinc-300">
+            {me.plan_name
+              ? "Seu plano ainda não tem CDs liberados."
+              : "Você ainda não tem um plano."}
+          </p>
+          <p className="mt-1 text-xs text-zinc-500">Fale com o administrador para liberar músicas.</p>
+          {me.admin_whatsapp && (
+            <a
+              href={`https://wa.me/${me.admin_whatsapp.replace(/\D/g, "")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#25D366] px-5 py-2 text-sm font-semibold text-black"
+            >
+              💬 Falar no WhatsApp
+            </a>
+          )}
         </div>
       )}
     </section>
@@ -763,12 +782,14 @@ export default function Home() {
             Toque <span className="text-accent">Agora</span>
           </h1>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowUpload(true)}
-              className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
-            >
-              <UploadIcon className="h-3.5 w-3.5" /> Enviar
-            </button>
+            {me.can_upload && (
+              <button
+                onClick={() => setShowUpload(true)}
+                className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
+              >
+                <UploadIcon className="h-3.5 w-3.5" /> Enviar
+              </button>
+            )}
             {me.is_admin && (
               <button
                 onClick={() => setShowAdmin(true)}

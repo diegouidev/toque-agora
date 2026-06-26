@@ -11,6 +11,7 @@ from .routers import (
     auth_router,
     categories,
     history,
+    plans,
     playlists,
     profile,
     search,
@@ -74,6 +75,7 @@ app.include_router(admin.router)
 app.include_router(upload.router)
 app.include_router(archives.router)
 app.include_router(categories.router)
+app.include_router(plans.router)
 app.include_router(playlists.router)
 app.include_router(search.router)
 app.include_router(history.router)

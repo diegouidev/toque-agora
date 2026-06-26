@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
 
-from ..access import can_access_band
+from ..access import can_access_band, plan_category_ids
 from ..archive_service import (
     ArchiveServiceError,
     content_type_for_image,
@@ -49,7 +49,16 @@ async def list_bands(
         .order_by(Archive.created_at.desc(), Band.name)
     )
     if not user.is_admin:
-        query = query.where(Archive.owner_id == user.id)
+        # Não-admin vê: as próprias coleções (se enviou algo) OU as bandas
+        # liberadas pelo plano (ouvinte/cliente). Sem plano e sem uploads → vazio.
+        plan_cat_ids = await plan_category_ids(session, user)
+        if plan_cat_ids:
+            query = query.where(
+                (Archive.owner_id == user.id)
+                | (Band.categories.any(Category.id.in_(plan_cat_ids)))
+            )
+        else:
+            query = query.where(Archive.owner_id == user.id)
     if category is not None:
         query = query.where(Band.categories.any(Category.id == category))
 
@@ -79,10 +88,9 @@ async def _band_owned_or_admin(
     band = await session.get(Band, band_id)
     if band is None:
         raise HTTPException(status_code=404, detail="Banda não encontrada.")
-    if not user.is_admin:
-        archive = await session.get(Archive, band.archive_id)
-        if archive is None or archive.owner_id != user.id:
-            raise HTTPException(status_code=403, detail="Acesso negado.")
+    # Acesso: dono, admin, plano (ouvinte) ou playlist compartilhada.
+    if not await can_access_band(session, user, band_id):
+        raise HTTPException(status_code=403, detail="Acesso negado.")
     return band
 
 

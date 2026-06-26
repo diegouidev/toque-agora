@@ -13,7 +13,7 @@ from ..auth import (
 )
 from ..config import settings
 from ..database import get_session
-from ..models import User
+from ..models import Plan, User
 from ..schemas import LoginIn, MeOut
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -99,12 +99,18 @@ async def me(
 
 async def _me_payload(user: User, session: AsyncSession) -> MeOut:
     used = await used_bytes_for(session, user.id)
+    plan_name = None
+    if user.plan_id is not None:
+        plan = await session.get(Plan, user.plan_id)
+        plan_name = plan.name if plan else None
     return MeOut(
         id=user.id,
         email=user.email,
         display_name=user.display_name,
         has_avatar=user.avatar_filename is not None,
         is_admin=user.is_admin,
+        can_upload=user.can_upload,
+        plan_name=plan_name,
         quota_bytes=user.quota_bytes,
         used_bytes=used,
         quota_gb=round(user.quota_bytes / _GB, 2),

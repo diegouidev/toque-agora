@@ -32,6 +32,22 @@ band_categories = Table(
     ),
 )
 
+# Associação M:N entre planos e categorias (um plano = pacote de categorias).
+plan_categories = Table(
+    "plan_categories",
+    Base.metadata,
+    Column(
+        "plan_id",
+        ForeignKey("plans.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "category_id",
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
 
 class User(Base):
     """Um usuário do sistema. Criado apenas pelo super admin."""
@@ -50,6 +66,16 @@ class User(Base):
     avatar_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Quota total de armazenamento em bytes (soma dos arquivos no disco).
     quota_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    # Pode enviar arquivos? Ouvintes (clientes) têm False.
+    can_upload: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Plano (pacote de categorias) que o usuário pode ouvir. None = sem plano.
+    plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("plans.id", ondelete="SET NULL"), nullable=True
+    )
+    # Expiração do plano (preparado para assinatura; sem uso por enquanto).
+    plan_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -60,6 +86,22 @@ class User(Base):
     archives: Mapped[list["Archive"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
     )
+    plan: Mapped["Plan | None"] = relationship(back_populates="users")
+
+
+class Plan(Base):
+    """Plano comercial = pacote de categorias liberadas a ouvintes."""
+
+    __tablename__ = "plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    categories: Mapped[list["Category"]] = relationship(secondary=plan_categories)
+    users: Mapped[list["User"]] = relationship(back_populates="plan")
 
 
 class Archive(Base):

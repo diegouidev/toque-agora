@@ -21,6 +21,8 @@ class MeOut(BaseModel):
     display_name: str | None = None
     has_avatar: bool = False
     is_admin: bool
+    can_upload: bool = True
+    plan_name: str | None = None
     quota_bytes: int
     used_bytes: int
     quota_gb: float
@@ -45,15 +47,20 @@ class UserCreate(BaseModel):
     display_name: str | None = Field(default=None, max_length=255)
     quota_gb: float | None = None  # default vem do settings se None
     is_admin: bool = False
+    can_upload: bool = True
+    plan_id: int | None = None
 
 
 class UserUpdate(BaseModel):
-    """Edição pelo admin: quota, senha (reset), nome, bloqueio."""
+    """Edição pelo admin: quota, senha (reset), nome, bloqueio, plano, upload."""
 
     quota_gb: float | None = None
     password: str | None = Field(default=None, min_length=8)
     display_name: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
+    can_upload: bool | None = None
+    # plan_id: use 0 para remover o plano (None = não alterar).
+    plan_id: int | None = None
 
 
 class UserOut(BaseModel):
@@ -65,8 +72,28 @@ class UserOut(BaseModel):
     is_admin: bool
     is_active: bool = True
     has_avatar: bool = False
+    can_upload: bool = True
+    plan_id: int | None = None
+    plan_name: str | None = None
     quota_bytes: int
     used_bytes: int = 0
+
+
+class PlanOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    categories: list["CategoryOut"] = []
+    user_count: int = 0
+
+
+class PlanCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class PlanCategoriesUpdate(BaseModel):
+    category_ids: list[int]
 
 
 class AdminUserDetail(BaseModel):
@@ -232,6 +259,9 @@ class AdminUserStat(BaseModel):
     is_admin: bool
     is_active: bool = True
     has_avatar: bool = False
+    can_upload: bool = True
+    plan_id: int | None = None
+    plan_name: str | None = None
     quota_bytes: int
     used_bytes: int
     archive_count: int = 0

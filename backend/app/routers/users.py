@@ -10,12 +10,19 @@ from ..auth import (
 )
 from ..config import settings
 from ..database import get_session
-from ..models import User
+from ..models import Plan, User
 from ..schemas import UserCreate, UserOut, UserUpdate
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 _GB = 1024 * 1024 * 1024
+
+
+async def _plan_name(session: AsyncSession, plan_id: int | None) -> str | None:
+    if plan_id is None:
+        return None
+    plan = await session.get(Plan, plan_id)
+    return plan.name if plan else None
 
 
 async def _to_out(session: AsyncSession, user: User) -> UserOut:
@@ -27,6 +34,9 @@ async def _to_out(session: AsyncSession, user: User) -> UserOut:
         is_admin=user.is_admin,
         is_active=user.is_active,
         has_avatar=user.avatar_filename is not None,
+        can_upload=user.can_upload,
+        plan_id=user.plan_id,
+        plan_name=await _plan_name(session, user.plan_id),
         quota_bytes=user.quota_bytes,
         used_bytes=used,
     )
@@ -55,6 +65,8 @@ async def create_user(
         password_hash=hash_password(body.password),
         display_name=body.display_name,
         is_admin=body.is_admin,
+        can_upload=body.can_upload,
+        plan_id=body.plan_id,
         quota_bytes=int(quota_gb * _GB),
     )
     session.add(user)
@@ -84,6 +96,17 @@ async def update_user(
         if user.id == admin.id and not body.is_active:
             raise HTTPException(status_code=400, detail="Você não pode bloquear a si mesmo.")
         user.is_active = body.is_active
+    if body.can_upload is not None:
+        user.can_upload = body.can_upload
+    if body.plan_id is not None:
+        # plan_id = 0 → remover plano; senão atribui (valida existência).
+        if body.plan_id == 0:
+            user.plan_id = None
+        else:
+            plan = await session.get(Plan, body.plan_id)
+            if plan is None:
+                raise HTTPException(status_code=404, detail="Plano não encontrado.")
+            user.plan_id = body.plan_id
     await session.commit()
     await session.refresh(user)
     return await _to_out(session, user)
