@@ -27,14 +27,31 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Cria as tabelas no startup e garante o super admin (MVP — sem migrações)."""
+    """Inicializa o banco no startup e garante o super admin.
+
+    Produção usa Alembic (`alembic upgrade head` no deploy), então o schema NÃO
+    é criado aqui. Em DEBUG, criamos as tabelas por conveniência de dev — assim
+    não é preciso rodar migração para subir localmente.
+    """
     # Importa os modelos para que fiquem registrados no metadata da Base.
     from . import models  # noqa: F401
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    if settings.run_migrations_on_startup:
+        _run_alembic_upgrade()
+    elif settings.debug:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
     await _ensure_admin()
+
+
+def _run_alembic_upgrade() -> None:
+    """Aplica as migrações pendentes (alembic upgrade head) de forma síncrona."""
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config("alembic.ini")
+    command.upgrade(cfg, "head")
 
 
 async def _ensure_admin() -> None:

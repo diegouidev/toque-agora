@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     debug: bool = False
     # Cookie de sessão Secure (só HTTPS). Deixe true em produção (Cloudflare = HTTPS).
     cookie_secure: bool = True
+    # Rodar `alembic upgrade head` automaticamente no startup (prático em produção).
+    run_migrations_on_startup: bool = False
 
     # ----- Autenticação / usuários -----
     # Valor sentinela: se permanecer este, o app recusa subir em produção.

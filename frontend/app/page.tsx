@@ -41,6 +41,11 @@ import {
   type UploadResult,
 } from "./lib/api";
 import { useAuth } from "./lib/auth-context";
+import {
+  clearPlayerState,
+  loadPlayerState,
+  savePlayerState,
+} from "./lib/player-storage";
 
 // Identifica a "view" de faixas aberta: uma banda, uma playlist ou as curtidas.
 type View =
@@ -68,6 +73,11 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState<"off" | "all" | "one">("off");
+  // Tempo a retomar na faixa restaurada do localStorage (consumido 1x).
+  const [resumeTime, setResumeTime] = useState(0);
+  const restoredRef = useState(() => ({ done: false }))[0];
+  // Posição atual reportada pelo player (para persistir).
+  const currentTimeRef = useState(() => ({ t: 0 }))[0];
 
   const [showAdmin, setShowAdmin] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -121,6 +131,37 @@ export default function Home() {
       loadShared();
     }
   }, [me, loadBands, loadPlaylists, loadFavCount, loadRecent, loadShared]);
+
+  // Restaura a fila/posição salva ao abrir (uma vez, com play PAUSADO).
+  useEffect(() => {
+    if (!me || restoredRef.done) return;
+    restoredRef.done = true;
+    const saved = loadPlayerState();
+    if (saved && saved.queue.length > 0 && saved.currentIndex != null) {
+      setQueue(saved.queue);
+      setCurrentIndex(saved.currentIndex);
+      setShuffle(saved.shuffle);
+      setRepeat(saved.repeat);
+      setResumeTime(saved.currentTime || 0);
+      setIsPlaying(false); // browsers bloqueiam autoplay; usuário dá play
+    }
+  }, [me, restoredRef]);
+
+  // Persiste o estado do player sempre que a fila/índice/modo mudam.
+  useEffect(() => {
+    if (!me) return;
+    if (queue.length === 0 || currentIndex == null) {
+      clearPlayerState();
+      return;
+    }
+    savePlayerState({
+      queue,
+      currentIndex,
+      shuffle,
+      repeat,
+      currentTime: currentTimeRef.t,
+    });
+  }, [me, queue, currentIndex, shuffle, repeat, currentTimeRef]);
 
   // ---- Abrir views (apenas navegação/browse; não mexe na fila) ----
   const openBand = useCallback(async (band: BandSummary): Promise<Track[]> => {
@@ -655,6 +696,14 @@ export default function Home() {
         onOpenQueue={() => setShowQueue(true)}
         hasNext={queue.length > 0}
         hasPrev={queue.length > 0}
+        resumeTime={resumeTime}
+        onTime={(t) => {
+          currentTimeRef.t = t;
+          // Atualiza o currentTime salvo sem recriar todo o estado.
+          if (queue.length > 0 && currentIndex != null) {
+            savePlayerState({ queue, currentIndex, shuffle, repeat, currentTime: t });
+          }
+        }}
       />
 
       <MobileNav tab={tab} onTab={onTab} />

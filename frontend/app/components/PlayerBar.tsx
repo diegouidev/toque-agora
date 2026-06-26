@@ -33,6 +33,10 @@ interface Props {
   onOpenQueue: () => void;
   hasNext: boolean;
   hasPrev: boolean;
+  // Persistência: tempo inicial ao restaurar (seek na faixa retomada) e
+  // callback para o pai salvar a posição atual periodicamente.
+  resumeTime?: number;
+  onTime?: (seconds: number) => void;
 }
 
 function fmt(s: number): string {
@@ -75,11 +79,25 @@ export default function PlayerBar({
   onOpenQueue,
   hasNext,
   hasPrev,
+  resumeTime,
+  onTime,
 }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  // resumeTime é aplicado uma única vez (na faixa restaurada do localStorage).
+  const pendingResume = useRef<number | null>(resumeTime ?? null);
+  const consumedResume = useRef(false);
+  useEffect(() => {
+    // Captura o resumeTime que chega logo após a montagem (restauração assíncrona),
+    // desde que ainda não tenha sido aplicado a nenhuma faixa.
+    if (!consumedResume.current && resumeTime && resumeTime > 0) {
+      pendingResume.current = resumeTime;
+    }
+  }, [resumeTime]);
+  // Último tempo reportado ao pai (throttle de gravação).
+  const lastReported = useRef(0);
 
   // Volume (0..1), persistido em localStorage.
   const [volume, setVolume] = useState(1);
@@ -174,11 +192,22 @@ export default function PlayerBar({
     if (!audio || !track) return;
     audio.src = streamUrl(track.id);
     audio.load();
-    setCurrent(0);
+    const resume = pendingResume.current;
+    pendingResume.current = null; // só vale para a 1ª faixa (restaurada)
+    consumedResume.current = true;
+    setCurrent(resume ?? 0);
     setDuration(0);
+    if (resume && resume > 0) {
+      // Aplica o seek assim que os metadados carregarem.
+      const onMeta = () => {
+        audio.currentTime = resume;
+        audio.removeEventListener("loadedmetadata", onMeta);
+      };
+      audio.addEventListener("loadedmetadata", onMeta);
+    }
     if (isPlaying) audio.play().catch(() => {});
-    // Registra a reprodução para "Tocadas recentemente" (falha silenciosa).
-    recordPlay(track.id);
+    // Não registra play em faixa apenas restaurada (pausada); só ao tocar de fato.
+    if (resume == null) recordPlay(track.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.id]);
 
@@ -259,7 +288,16 @@ export default function PlayerBar({
     <>
       <audio
         ref={audioRef}
-        onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
+        onTimeUpdate={(e) => {
+          const t = e.currentTarget.currentTime;
+          setCurrent(t);
+          // Reporta a posição ao pai a cada ~5s (para salvar no localStorage).
+          if (onTime && Math.abs(t - lastReported.current) >= 5) {
+            lastReported.current = t;
+            onTime(t);
+          }
+        }}
+        onPause={() => onTime?.(audioRef.current?.currentTime ?? 0)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onEnded={handleEnded}
         preload="metadata"

@@ -44,6 +44,16 @@ Acesse **http://localhost:8080** (porta do Caddy). Login com `ADMIN_EMAIL`/`ADMI
 1. No `.env`: `DEBUG=false`, `COOKIE_SECURE=true`, e gere o segredo:
    `JWT_SECRET=$(openssl rand -hex 32)`. Troque `ADMIN_PASSWORD`/`POSTGRES_PASSWORD`.
 2. `docker compose up --build -d`.
+2b. **Aplique as migrações** (cria/atualiza o schema sem perder dados):
+   ```bash
+   docker compose exec backend alembic upgrade head
+   ```
+   > Alternativa automática: defina `RUN_MIGRATIONS_ON_STARTUP=true` no `.env` para o backend
+   > rodar `alembic upgrade head` sozinho a cada start.
+   >
+   > Banco que **já existia** antes do Alembic (criado por `create_all`): rode uma vez
+   > `docker compose exec backend alembic stamp head` para marcá-lo como migrado **sem recriar** —
+   > seus dados ficam intactos.
 3. Configure o Cloudflare Tunnel apontando o hostname para o Caddy:
    ```bash
    cloudflared tunnel create toqueagora
@@ -68,6 +78,10 @@ Acesse **http://localhost:8080** (porta do Caddy). Login com `ADMIN_EMAIL`/`ADMI
 - Upload valida **magic bytes** (não só a extensão).
 - `/docs` e `/redoc` desativados em produção (`DEBUG=false`).
 - Isolamento por usuário (cada um vê só a própria coleção; admin vê tudo) e **quotas** por GB.
+- **Migrations com Alembic** — schema versionado; evoluir tabelas sem dropar o banco
+  (`alembic upgrade head`). Em DEBUG o schema é criado automaticamente (sem migração).
+- **Player persistente** — fila, faixa e posição são salvas no navegador; ao recarregar, retoma
+  de onde parou (pausado).
 
 ## Rotas principais
 
