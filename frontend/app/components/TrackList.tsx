@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Track } from "../lib/api";
-import { DragIcon, HeartIcon, PlayIcon, PlusIcon } from "./icons";
+import { DragIcon, HeartIcon, PlayIcon, PlusIcon, QueueIcon } from "./icons";
 
 interface Props {
   tracks: Track[];
@@ -11,6 +11,7 @@ interface Props {
   onSelect: (index: number) => void;
   onToggleFavorite?: (track: Track) => void;
   onAddToPlaylist?: (track: Track) => void;
+  onPlayNext?: (track: Track) => void; // "Tocar depois" (adiciona à fila)
   onRemove?: (track: Track) => void; // contexto de playlist
   onReorder?: (newOrder: Track[]) => void; // habilita drag-and-drop (playlist)
 }
@@ -29,6 +30,7 @@ export default function TrackList({
   onSelect,
   onToggleFavorite,
   onAddToPlaylist,
+  onPlayNext,
   onRemove,
   onReorder,
 }: Props) {
@@ -135,6 +137,21 @@ export default function TrackList({
                   title={track.is_favorite ? "Descurtir" : "Curtir"}
                 >
                   <HeartIcon className="h-4 w-4" filled={track.is_favorite} />
+                </button>
+              )}
+
+              {/* Tocar depois (adicionar à fila) */}
+              {onPlayNext && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPlayNext(track);
+                  }}
+                  className="shrink-0 p-1 text-zinc-500 opacity-0 transition hover:text-white group-hover:opacity-100"
+                  aria-label="Tocar depois"
+                  title="Tocar depois"
+                >
+                  <QueueIcon className="h-4 w-4" />
                 </button>
               )}
 

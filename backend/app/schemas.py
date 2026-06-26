@@ -121,3 +121,17 @@ class UploadResult(BaseModel):
 
     bands: list[BandSummary] = []
     errors: list[UploadError] = []
+
+
+class SearchResult(BaseModel):
+    """Resultado da busca: bandas e faixas que casam com o termo."""
+
+    bands: list[BandSummary] = []
+    tracks: list[TrackOut] = []
+
+
+class UploadComplete(BaseModel):
+    """Finaliza um upload em pedaços: junta o .part e indexa as bandas."""
+
+    upload_id: str = Field(min_length=8, max_length=64)
+    filename: str = Field(min_length=1, max_length=512)

@@ -165,3 +165,25 @@ class Favorite(Base):
     )
 
     track: Mapped["Track"] = relationship()
+
+
+class PlayHistory(Base):
+    """Registro de uma reprodução: faixa que o usuário tocou e quando.
+
+    Alimenta a seção 'Tocadas recentemente'. Uma linha por play (não único).
+    """
+
+    __tablename__ = "play_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    track_id: Mapped[int] = mapped_column(
+        ForeignKey("tracks.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    played_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    track: Mapped["Track"] = relationship()

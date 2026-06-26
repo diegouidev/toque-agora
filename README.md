@@ -77,8 +77,16 @@ Acesse **http://localhost:8080** (porta do Caddy). Login com `ADMIN_EMAIL`/`ADMI
 | `GET` | `/api/auth/me` | Usuário logado + uso de quota |
 | `POST/GET/PATCH/DELETE` | `/api/users…` | Admin: CRUD de usuários e quota |
 | `POST` | `/api/upload` | Envia `.rar`/`.zip` (multi, com quota) |
+| `POST` | `/api/upload/chunk` | Envia um pedaço (<100 MB) — passa pelo proxy/Cloudflare |
+| `POST` | `/api/upload/complete` | Finaliza o upload em pedaços e indexa as bandas |
+| `POST` | `/api/upload/abort` | Cancela o upload em pedaços (limpa o temporário) |
 | `GET` | `/api/bands` | Bandas do usuário |
 | `GET` | `/api/bands/{id}/tracks` | Faixas de uma banda |
 | `GET` | `/api/bands/{id}/cover` | Capa da banda (de dentro do arquivo) |
 | `GET` | `/api/stream/{track_id}` | Streaming da faixa (Range/206) |
 | `DELETE` | `/api/archives/{id}` | Exclui o arquivo (disco + banco) |
+| `GET` | `/api/search?q=` | Busca bandas e faixas por nome |
+| `POST` | `/api/history/{track_id}` | Registra uma reprodução (tocadas recentemente) |
+| `GET` | `/api/history` | Bandas tocadas recentemente |
+| `PUT/DELETE/GET` | `/api/favorites…` | Curtir/descurtir e listar curtidas |
+| `GET/POST/DELETE` | `/api/playlists…` | CRUD de playlists, faixas e ordem |

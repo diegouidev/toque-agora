@@ -233,10 +233,47 @@ export async function removeFromPlaylist(playlistId: number, trackId: number): P
   if (!res.ok && res.status !== 204) throw new Error("Falha ao remover da playlist");
 }
 
+// ---------- Busca ----------
+export interface SearchResult {
+  bands: BandSummary[];
+  tracks: Track[];
+}
+
+export async function searchAll(q: string): Promise<SearchResult> {
+  const res = await apiFetch(`/api/search?q=${encodeURIComponent(q)}`);
+  if (!res.ok) throw new Error("Falha na busca");
+  return res.json();
+}
+
+// ---------- Histórico (tocadas recentemente) ----------
+export async function fetchRecent(limit = 20): Promise<BandSummary[]> {
+  const res = await apiFetch(`/api/history?limit=${limit}`);
+  if (!res.ok) throw new Error("Falha ao listar recentes");
+  return res.json();
+}
+
+// Registra que uma faixa começou a tocar (falha silenciosa; não bloqueia o player).
+export function recordPlay(trackId: number): void {
+  apiFetch(`/api/history/${trackId}`, { method: "POST", keepalive: true }).catch(
+    () => {},
+  );
+}
+
 // ---------- Upload com progresso (XHR) ----------
 // Retornado para o Uploader montar a request com cookie (withCredentials).
 export function uploadEndpoint(): string {
   return `${API_URL}/api/upload`;
+}
+
+// ---------- Upload em pedaços (passa pelo limite do proxy/Cloudflare) ----------
+export function uploadChunkEndpoint(): string {
+  return `${API_URL}/api/upload/chunk`;
+}
+export function uploadCompleteEndpoint(): string {
+  return `${API_URL}/api/upload/complete`;
+}
+export function uploadAbortEndpoint(): string {
+  return `${API_URL}/api/upload/abort`;
 }
 
 // ---------- WhatsApp upgrade ----------

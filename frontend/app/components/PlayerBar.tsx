@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { coverUrl, streamUrl, type Track } from "../lib/api";
+import { coverUrl, recordPlay, streamUrl, type Track } from "../lib/api";
 import {
   ChevronDownIcon,
   MusicIcon,
@@ -9,6 +9,7 @@ import {
   PauseIcon,
   PlayIcon,
   PrevIcon,
+  QueueIcon,
   RepeatIcon,
   ShuffleIcon,
 } from "./icons";
@@ -27,6 +28,7 @@ interface Props {
   onNext: () => void;
   onPrev: () => void;
   onEnded: () => void;
+  onOpenQueue: () => void;
   hasNext: boolean;
   hasPrev: boolean;
 }
@@ -68,6 +70,7 @@ export default function PlayerBar({
   onNext,
   onPrev,
   onEnded,
+  onOpenQueue,
   hasNext,
   hasPrev,
 }: Props) {
@@ -96,6 +99,8 @@ export default function PlayerBar({
     setCurrent(0);
     setDuration(0);
     if (isPlaying) audio.play().catch(() => {});
+    // Registra a reprodução para "Tocadas recentemente" (falha silenciosa).
+    recordPlay(track.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.id]);
 
@@ -183,7 +188,7 @@ export default function PlayerBar({
       />
 
       {/* ----- Mini barra (rodapé) ----- */}
-      <footer className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-black/80 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
+      <footer className="fixed inset-x-0 bottom-[57px] z-30 border-t border-white/10 bg-black/80 backdrop-blur-xl lg:bottom-0 lg:pb-[env(safe-area-inset-bottom)]">
         <button
           onClick={() => setExpanded(true)}
           className="flex w-full items-center gap-3 px-4 py-2.5 text-left"
@@ -201,6 +206,19 @@ export default function PlayerBar({
             <p className="truncate text-sm font-semibold">{track.display_name}</p>
             <p className="truncate text-xs text-zinc-400">{bandName ?? "—"}</p>
           </div>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenQueue();
+            }}
+            className="hidden h-10 w-10 items-center justify-center rounded-full text-zinc-300 hover:text-white sm:flex"
+            aria-label="Fila"
+            title="Fila"
+          >
+            <QueueIcon className="h-5 w-5" />
+          </span>
           <span
             role="button"
             tabIndex={0}
@@ -238,7 +256,14 @@ export default function PlayerBar({
               <ChevronDownIcon className="h-7 w-7" />
             </button>
             <p className="truncate px-3 text-sm font-semibold">{bandName ?? "Tocando agora"}</p>
-            <span className="w-7" />
+            <button
+              onClick={onOpenQueue}
+              aria-label="Fila"
+              title="Fila"
+              className="rounded-full p-1 active:scale-90"
+            >
+              <QueueIcon className="h-6 w-6" />
+            </button>
           </div>
 
           <div className="flex flex-1 flex-col justify-center gap-6 px-7">

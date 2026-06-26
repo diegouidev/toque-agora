@@ -2,7 +2,9 @@
 
 import { useRef, useState } from "react";
 import {
-  uploadEndpoint,
+  uploadAbortEndpoint,
+  uploadChunkEndpoint,
+  uploadCompleteEndpoint,
   type QuotaExceeded,
   type UploadResult,
 } from "../lib/api";
@@ -19,6 +21,48 @@ interface FileProgress {
   error?: string;
 }
 
+type UploadOneResult = { result?: UploadResult; error?: string; quota?: QuotaExceeded };
+
+// Tamanho de cada pedaço enviado. Abaixo de 100 MB para passar pelo limite de
+// corpo da Cloudflare/proxy (plano Free = 100 MB).
+const CHUNK_SIZE = 90 * 1024 * 1024;
+
+// POST com progresso de upload (XHR). Resolve com status + corpo bruto.
+function xhrPost(
+  url: string,
+  body: XMLHttpRequestBodyInit,
+  onProgress?: (loadedBytes: number) => void,
+): Promise<{ status: number; text: string }> {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.withCredentials = true; // envia o cookie de sessão HttpOnly
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded);
+      };
+    }
+    xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText });
+    xhr.onerror = () => resolve({ status: 0, text: "" });
+    xhr.send(body);
+  });
+}
+
+// Interpreta um 413: (a) quota estruturada → modal; (b) corpo grande demais.
+function parse413(text: string): UploadOneResult {
+  try {
+    const d = JSON.parse(text).detail;
+    if (d && d.code === "quota_exceeded") return { quota: d as QuotaExceeded };
+    return { error: typeof d === "string" ? d : "Pedaço grande demais para o servidor." };
+  } catch {
+    return {
+      error:
+        "Pedaço grande demais para o servidor (limite do proxy/Cloudflare). " +
+        "Reduza o tamanho do pedaço.",
+    };
+  }
+}
+
 export default function Uploader({ onUploaded, onQuotaExceeded }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -29,58 +73,79 @@ export default function Uploader({ onUploaded, onQuotaExceeded }: Props) {
     inputRef.current?.click();
   }
 
-  // Envia UM arquivo (XHR para ter progresso). Resolve com o resultado parcial.
-  function uploadOne(
+  // Envia UM arquivo em pedaços (<100 MB cada) e finaliza com /complete.
+  // Mantém cada requisição pequena para passar pelo limite do proxy/Cloudflare.
+  async function uploadOne(
     file: File,
     onProgress: (pct: number) => void,
-  ): Promise<{ result?: UploadResult; error?: string; quota?: QuotaExceeded }> {
-    return new Promise((resolve) => {
+  ): Promise<UploadOneResult> {
+    const uploadId = (
+      crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    ).replace(/[^A-Za-z0-9_-]/g, "");
+    const total = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+    let sentBytes = 0; // bytes já confirmados (pedaços anteriores)
+
+    for (let i = 0; i < total; i++) {
+      const start = i * CHUNK_SIZE;
+      const blob = file.slice(start, Math.min(start + CHUNK_SIZE, file.size));
       const form = new FormData();
-      form.append("files", file);
+      form.append("upload_id", uploadId);
+      form.append("chunk_index", String(i));
+      form.append("total_chunks", String(total));
+      form.append("chunk", blob, file.name);
 
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", uploadEndpoint());
-      // Envia o cookie de sessão HttpOnly junto.
-      xhr.withCredentials = true;
+      const res = await xhrPost(uploadChunkEndpoint(), form, (loaded) =>
+        onProgress(Math.round(((sentBytes + loaded) / file.size) * 100)),
+      );
 
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-      };
-
-      xhr.onload = () => {
-        if (xhr.status === 201) {
-          try {
-            resolve({ result: JSON.parse(xhr.responseText) as UploadResult });
-          } catch {
-            resolve({ error: "Resposta inválida do servidor." });
-          }
-        } else if (xhr.status === 413) {
-          // Quota excedida — detail estruturado.
-          try {
-            const d = JSON.parse(xhr.responseText).detail;
-            if (d && d.code === "quota_exceeded") {
-              resolve({ quota: d as QuotaExceeded });
-              return;
-            }
-            resolve({ error: typeof d === "string" ? d : "Quota excedida." });
-          } catch {
-            resolve({ error: "Quota excedida." });
-          }
-        } else {
-          let detail = "Falha no upload.";
-          try {
-            const d = JSON.parse(xhr.responseText).detail;
-            if (typeof d === "string") detail = d;
-          } catch {
-            /* mantém padrão */
-          }
-          resolve({ error: detail });
+      if (res.status === 413) {
+        void abort(uploadId);
+        return parse413(res.text);
+      }
+      if (res.status !== 204 && res.status !== 200) {
+        void abort(uploadId);
+        if (res.status === 0) return { error: "Erro de rede." };
+        let detail = "Falha no upload.";
+        try {
+          const d = JSON.parse(res.text).detail;
+          if (typeof d === "string") detail = d;
+        } catch {
+          /* mantém padrão */
         }
-      };
+        return { error: detail };
+      }
+      sentBytes += blob.size;
+    }
 
-      xhr.onerror = () => resolve({ error: "Erro de rede." });
-      xhr.send(form);
-    });
+    // Finaliza: o servidor valida (magic), indexa as bandas e responde 201.
+    try {
+      const res = await fetch(uploadCompleteEndpoint(), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ upload_id: uploadId, filename: file.name }),
+      });
+      if (res.status === 201) {
+        return { result: (await res.json()) as UploadResult };
+      }
+      if (res.status === 413) {
+        const text = await res.text();
+        return parse413(text);
+      }
+      const d = await res.json().catch(() => ({}));
+      return {
+        error: typeof d.detail === "string" ? d.detail : "Falha ao finalizar o upload.",
+      };
+    } catch {
+      return { error: "Erro de rede ao finalizar." };
+    }
+  }
+
+  // Limpeza best-effort do arquivo temporário no servidor (não bloqueia).
+  function abort(uploadId: string): void {
+    const form = new FormData();
+    form.append("upload_id", uploadId);
+    void xhrPost(uploadAbortEndpoint(), form);
   }
 
   async function upload(files: FileList) {

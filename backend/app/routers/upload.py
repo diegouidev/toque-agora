@@ -1,9 +1,10 @@
 import os
 import posixpath
+import re
 import uuid
 
 import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,12 +19,14 @@ from ..auth import get_current_user, used_bytes_for
 from ..config import settings
 from ..database import get_session
 from ..models import Archive, Band, Track, User
-from ..schemas import BandSummary, UploadError, UploadResult
+from ..schemas import BandSummary, UploadComplete, UploadError, UploadResult
 
 router = APIRouter(prefix="/api", tags=["upload"])
 
 _CHUNK = 1024 * 1024  # 1 MiB por chunk ao gravar em disco
 _GB = 1024 * 1024 * 1024
+# upload_id é gerado no cliente (uuid); validamos para evitar path traversal.
+_UPLOAD_ID_RE = re.compile(r"[A-Za-z0-9_-]{8,64}")
 
 
 class _QuotaExceeded(Exception):
@@ -32,6 +35,19 @@ class _QuotaExceeded(Exception):
     def __init__(self, used: int, quota: int):
         self.used = used
         self.quota = quota
+
+
+def _quota_exceeded_http(used: int, quota: int) -> HTTPException:
+    """413 com detail estruturado que o front usa para abrir o modal de upgrade."""
+    return HTTPException(
+        status_code=413,
+        detail={
+            "code": "quota_exceeded",
+            "used_gb": round(used / _GB, 2),
+            "quota_gb": round(quota / _GB, 2),
+            "whatsapp": settings.admin_whatsapp,
+        },
+    )
 
 
 @router.post("/upload", response_model=UploadResult, status_code=201)
@@ -60,15 +76,7 @@ async def upload_archives(
             created_bands.extend(bands)
         except _QuotaExceeded as q:
             # Para o lote: o front mostra o modal de upgrade (WhatsApp).
-            raise HTTPException(
-                status_code=413,
-                detail={
-                    "code": "quota_exceeded",
-                    "used_gb": round(q.used / _GB, 2),
-                    "quota_gb": round(q.quota / _GB, 2),
-                    "whatsapp": settings.admin_whatsapp,
-                },
-            )
+            raise _quota_exceeded_http(q.used, q.quota)
         except HTTPException as exc:
             errors.append(
                 UploadError(filename=file.filename or "(sem nome)", detail=str(exc.detail))
@@ -94,6 +102,132 @@ async def upload_archives(
         ],
         errors=errors,
     )
+
+
+# --------------------- Upload em pedaços (chunked) ---------------------
+# Necessário quando há um proxy/Cloudflare na frente limitando o corpo da
+# requisição (ex.: 100 MB no plano Free). O cliente fatia o arquivo em partes
+# pequenas; o servidor anexa cada parte ao mesmo .part e finaliza no /complete.
+
+
+def _part_path(upload_id: str) -> str:
+    """Caminho do arquivo temporário do upload, validando o id (anti traversal)."""
+    if not _UPLOAD_ID_RE.fullmatch(upload_id):
+        raise HTTPException(status_code=400, detail="upload_id inválido.")
+    return os.path.join(settings.data_dir, f"{upload_id}.part")
+
+
+@router.post("/upload/chunk", status_code=204)
+async def upload_chunk(
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    chunk: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Anexa um pedaço ao arquivo temporário {upload_id}.part.
+
+    Cada requisição é pequena (o cliente fatia em <100 MB) para passar pelo
+    limite de corpo do proxy/Cloudflare. Respeita quota e tamanho máximo.
+    """
+    os.makedirs(settings.data_dir, exist_ok=True)
+    part_path = _part_path(upload_id)
+
+    used = await used_bytes_for(session, user.id)
+    remaining = max(0, user.quota_bytes - used)
+
+    # Pedaço 0 começa o arquivo do zero (wb); os demais anexam (ab).
+    mode = "wb" if chunk_index == 0 else "ab"
+    written = (
+        0
+        if chunk_index == 0
+        else (os.path.getsize(part_path) if os.path.exists(part_path) else 0)
+    )
+
+    try:
+        async with aiofiles.open(part_path, mode) as out:
+            while data := await chunk.read(_CHUNK):
+                written += len(data)
+                if written > settings.max_upload_bytes:
+                    _safe_remove(part_path)
+                    raise HTTPException(status_code=413, detail="Arquivo muito grande.")
+                if written > remaining:
+                    # Estouro de quota — limpa e sinaliza para o modal de upgrade.
+                    _safe_remove(part_path)
+                    raise _quota_exceeded_http(used + written, user.quota_bytes)
+                await out.write(data)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _safe_remove(part_path)
+        raise HTTPException(status_code=500, detail=f"Falha ao salvar: {exc}") from exc
+
+    return Response(status_code=204)
+
+
+@router.post("/upload/complete", response_model=UploadResult, status_code=201)
+async def upload_complete(
+    body: UploadComplete,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> UploadResult:
+    """Finaliza: promove o .part a arquivo definitivo e indexa as bandas."""
+    part_path = _part_path(body.upload_id)
+    if not os.path.exists(part_path):
+        raise HTTPException(status_code=404, detail="Upload não encontrado ou expirado.")
+
+    kind = kind_from_filename(body.filename)
+    if kind is None:
+        _safe_remove(part_path)
+        raise HTTPException(status_code=400, detail="Envie um arquivo .rar ou .zip.")
+
+    written = os.path.getsize(part_path)
+    if written == 0:
+        _safe_remove(part_path)
+        raise HTTPException(status_code=400, detail="Upload vazio.")
+
+    # Revalida a quota no fechamento (pode ter mudado entre os pedaços).
+    used = await used_bytes_for(session, user.id)
+    if written > max(0, user.quota_bytes - used):
+        _safe_remove(part_path)
+        raise _quota_exceeded_http(used + written, user.quota_bytes)
+
+    stored_name = f"{uuid.uuid4().hex}.{kind}"
+    stored_path = os.path.join(settings.data_dir, stored_name)
+    try:
+        os.rename(part_path, stored_path)
+    except OSError as exc:
+        _safe_remove(part_path)
+        raise HTTPException(status_code=500, detail=f"Falha ao finalizar: {exc}") from exc
+
+    bands = await _index_archive(
+        stored_path, kind, body.filename, written, user, session
+    )
+    return UploadResult(
+        bands=[
+            BandSummary(
+                id=b.id,
+                archive_id=b.archive_id,
+                name=b.name,
+                kind=b.archive.kind,
+                track_count=len(b.tracks),
+                has_cover=b.cover_name is not None,
+            )
+            for b in bands
+        ],
+        errors=[],
+    )
+
+
+@router.post("/upload/abort", status_code=204)
+async def upload_abort(
+    upload_id: str = Form(...),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """Cancela um upload em andamento removendo o arquivo temporário."""
+    _safe_remove(_part_path(upload_id))
+    return Response(status_code=204)
 
 
 async def _process_one(
@@ -131,6 +265,24 @@ async def _process_one(
         _safe_remove(stored_path)
         raise HTTPException(status_code=500, detail=f"Falha ao salvar: {exc}") from exc
 
+    return await _index_archive(
+        stored_path, kind, file.filename or stored_name, written, user, session
+    )
+
+
+async def _index_archive(
+    stored_path: str,
+    kind: str,
+    original_filename: str,
+    written: int,
+    user: User,
+    session: AsyncSession,
+) -> list[Band]:
+    """Valida (magic), indexa bandas/faixas e persiste um arquivo já gravado.
+
+    Compartilhado entre o upload direto e a finalização do upload em pedaços.
+    Em qualquer falha, remove o arquivo do disco e levanta HTTPException.
+    """
     # Confere os magic bytes: a extensão sozinha não garante o formato real.
     try:
         async with aiofiles.open(stored_path, "rb") as fh:
@@ -167,11 +319,14 @@ async def _process_one(
         durations = {}
 
     # Nome de fallback para faixas da raiz = nome do arquivo sem extensão.
-    archive_stem = posixpath.splitext(posixpath.basename(file.filename or stored_name))[0]
+    stored_name = posixpath.basename(stored_path)
+    archive_stem = posixpath.splitext(
+        posixpath.basename(original_filename or stored_name)
+    )[0]
 
     archive = Archive(
         owner_id=user.id,
-        filename=file.filename or stored_name,
+        filename=original_filename or stored_name,
         stored_path=stored_path,
         kind=kind,
         size_bytes=written,
