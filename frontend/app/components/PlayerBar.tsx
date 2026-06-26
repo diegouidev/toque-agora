@@ -99,8 +99,10 @@ export default function PlayerBar({
   // Último tempo reportado ao pai (throttle de gravação).
   const lastReported = useRef(0);
 
-  // Volume (0..1), persistido em localStorage.
-  const [volume, setVolume] = useState(1);
+  // Volume (0..1), persistido em localStorage. Default 70%.
+  const [volume, setVolume] = useState(0.7);
+  // Popover de volume (usado no mobile, onde o range não cabe inline).
+  const [volMenu, setVolMenu] = useState(false);
   // Sleep timer: horário-alvo (ms) ou "parar no fim da faixa".
   const [sleepUntil, setSleepUntil] = useState<number | null>(null);
   const [sleepEndOfTrack, setSleepEndOfTrack] = useState(false);
@@ -113,9 +115,11 @@ export default function PlayerBar({
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // Carrega o volume salvo uma vez.
+  // Carrega o volume salvo uma vez (só se a chave existir; senão mantém 70%).
   useEffect(() => {
-    const saved = Number(localStorage.getItem("ta_volume"));
+    const raw = localStorage.getItem("ta_volume");
+    if (raw == null) return; // primeira visita → fica em 0.7
+    const saved = Number(raw);
     if (!Number.isNaN(saved) && saved >= 0 && saved <= 1) setVolume(saved);
   }, []);
   // Aplica o volume ao <audio> e persiste.
@@ -266,6 +270,7 @@ export default function PlayerBar({
   // Barra de progresso reutilizável.
   // Duração total: a do <audio> (precisa) ou a do banco (ID3) como fallback imediato.
   const totalDuration = duration || track.duration || 0;
+  const fillPct = totalDuration > 0 ? (current / totalDuration) * 100 : 0;
   const progress = (
     <div className="flex w-full items-center gap-2">
       <span className="w-10 text-right text-xs tabular-nums text-zinc-400">{fmt(current)}</span>
@@ -277,7 +282,8 @@ export default function PlayerBar({
         value={current}
         onChange={seek}
         disabled={!duration}
-        className="flex-1 bg-white/20 accent-accent"
+        className="slider-visible slider-fill flex-1"
+        style={{ ["--fill" as string]: `${fillPct}%` }}
         aria-label="Progresso"
       />
       <span className="w-10 text-xs tabular-nums text-zinc-400">{fmt(totalDuration)}</span>
@@ -322,6 +328,51 @@ export default function PlayerBar({
             <p className="truncate text-sm font-semibold">{track.display_name}</p>
             <p className="truncate text-xs text-zinc-400">{bandName ?? "—"}</p>
           </div>
+          {/* Volume — desktop: range inline; mobile: ícone abre popover */}
+          <span
+            className="relative flex items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setVolMenu((v) => !v)}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-300 hover:text-white"
+              aria-label="Volume"
+              title="Volume"
+            >
+              <VolumeIcon muted={volume === 0} className="h-5 w-5" />
+            </button>
+            {/* Range inline (desktop) */}
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={volume}
+              onChange={(e) => setVolume(Number(e.target.value))}
+              className="slider-visible slider-fill hidden w-24 lg:block"
+              style={{ ["--fill" as string]: `${volume * 100}%` }}
+              aria-label="Volume"
+            />
+            {/* Popover (mobile/tablet) */}
+            {volMenu && (
+              <div className="absolute bottom-12 right-0 z-40 rounded-xl border border-white/10 bg-zinc-900 p-3 shadow-2xl lg:hidden">
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={volume}
+                  onChange={(e) => setVolume(Number(e.target.value))}
+                  className="slider-visible slider-fill w-36"
+                  style={{ ["--fill" as string]: `${volume * 100}%` }}
+                  aria-label="Volume"
+                  autoFocus
+                  onBlur={() => setVolMenu(false)}
+                />
+              </div>
+            )}
+          </span>
           <span
             role="button"
             tabIndex={0}
@@ -475,7 +526,8 @@ export default function PlayerBar({
                   step={0.05}
                   value={volume}
                   onChange={(e) => setVolume(Number(e.target.value))}
-                  className="flex-1 accent-accent"
+                  className="slider-visible slider-fill flex-1"
+                  style={{ ["--fill" as string]: `${volume * 100}%` }}
                   aria-label="Volume"
                 />
               </div>

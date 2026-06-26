@@ -44,16 +44,10 @@ Acesse **http://localhost:8080** (porta do Caddy). Login com `ADMIN_EMAIL`/`ADMI
 1. No `.env`: `DEBUG=false`, `COOKIE_SECURE=true`, e gere o segredo:
    `JWT_SECRET=$(openssl rand -hex 32)`. Troque `ADMIN_PASSWORD`/`POSTGRES_PASSWORD`.
 2. `docker compose up --build -d`.
-2b. **Aplique as migrações** (cria/atualiza o schema sem perder dados):
-   ```bash
-   docker compose exec backend alembic upgrade head
-   ```
-   > Alternativa automática: defina `RUN_MIGRATIONS_ON_STARTUP=true` no `.env` para o backend
-   > rodar `alembic upgrade head` sozinho a cada start.
-   >
-   > Banco que **já existia** antes do Alembic (criado por `create_all`): rode uma vez
-   > `docker compose exec backend alembic stamp head` para marcá-lo como migrado **sem recriar** —
-   > seus dados ficam intactos.
+   > **Migrações automáticas:** o backend roda `alembic upgrade head` sozinho no start (via
+   > `entrypoint.sh`), então **não há comando manual** a cada deploy/atualização. Banco legado
+   > (criado por `create_all` antes do Alembic) é detectado e marcado (`stamp`) automaticamente,
+   > sem perder dados.
 3. Configure o Cloudflare Tunnel apontando o hostname para o Caddy:
    ```bash
    cloudflared tunnel create toqueagora

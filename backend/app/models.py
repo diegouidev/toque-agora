@@ -15,10 +15,19 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Conta ativa? Se False, o login é recusado (bloqueio pelo admin).
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Nome de exibição (opcional; cai no email quando ausente).
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Nome do arquivo do avatar em disco (None se não houver).
+    avatar_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Quota total de armazenamento em bytes (soma dos arquivos no disco).
     quota_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
 
     archives: Mapped[list["Archive"]] = relationship(

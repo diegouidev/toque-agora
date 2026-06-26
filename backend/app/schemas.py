@@ -18,6 +18,8 @@ class MeOut(BaseModel):
 
     id: int
     email: str
+    display_name: str | None = None
+    has_avatar: bool = False
     is_admin: bool
     quota_bytes: int
     used_bytes: int
@@ -26,18 +28,32 @@ class MeOut(BaseModel):
     admin_whatsapp: str = ""
 
 
+class MeUpdate(BaseModel):
+    """Usuário edita o próprio perfil (nome). Senha vai em ChangePassword."""
+
+    display_name: str | None = Field(default=None, max_length=255)
+
+
+class ChangePassword(BaseModel):
+    old_password: str
+    new_password: str = Field(min_length=8)
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
+    display_name: str | None = Field(default=None, max_length=255)
     quota_gb: float | None = None  # default vem do settings se None
     is_admin: bool = False
 
 
 class UserUpdate(BaseModel):
-    """Edição de quota (e opcionalmente senha) pelo admin."""
+    """Edição pelo admin: quota, senha (reset), nome, bloqueio."""
 
     quota_gb: float | None = None
     password: str | None = Field(default=None, min_length=8)
+    display_name: str | None = Field(default=None, max_length=255)
+    is_active: bool | None = None
 
 
 class UserOut(BaseModel):
@@ -45,9 +61,30 @@ class UserOut(BaseModel):
 
     id: int
     email: str
+    display_name: str | None = None
     is_admin: bool
+    is_active: bool = True
+    has_avatar: bool = False
     quota_bytes: int
     used_bytes: int = 0
+
+
+class AdminUserDetail(BaseModel):
+    """Perfil completo de um usuário, visto pelo admin."""
+
+    id: int
+    email: str
+    display_name: str | None = None
+    is_admin: bool
+    is_active: bool
+    has_avatar: bool
+    quota_bytes: int
+    used_bytes: int
+    archive_count: int
+    track_count: int
+    playlist_count: int
+    last_played_at: datetime | None = None
+    created_at: datetime | None = None
 
 
 class TrackOut(BaseModel):
@@ -168,7 +205,10 @@ class AdminTotals(BaseModel):
 class AdminUserStat(BaseModel):
     id: int
     email: str
+    display_name: str | None = None
     is_admin: bool
+    is_active: bool = True
+    has_avatar: bool = False
     quota_bytes: int
     used_bytes: int
     archive_count: int = 0

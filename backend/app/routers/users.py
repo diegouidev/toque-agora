@@ -23,7 +23,10 @@ async def _to_out(session: AsyncSession, user: User) -> UserOut:
     return UserOut(
         id=user.id,
         email=user.email,
+        display_name=user.display_name,
         is_admin=user.is_admin,
+        is_active=user.is_active,
+        has_avatar=user.avatar_filename is not None,
         quota_bytes=user.quota_bytes,
         used_bytes=used,
     )
@@ -50,6 +53,7 @@ async def create_user(
     user = User(
         email=body.email,
         password_hash=hash_password(body.password),
+        display_name=body.display_name,
         is_admin=body.is_admin,
         quota_bytes=int(quota_gb * _GB),
     )
@@ -63,10 +67,10 @@ async def create_user(
 async def update_user(
     user_id: int,
     body: UserUpdate,
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> UserOut:
-    """Editar a quota total (liberar mais GB) e/ou a senha de um usuário."""
+    """Admin edita quota, senha (reset), nome e bloqueio (is_active)."""
     user = await session.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="Usuário não encontrado.")
@@ -74,6 +78,12 @@ async def update_user(
         user.quota_bytes = int(body.quota_gb * _GB)
     if body.password:
         user.password_hash = hash_password(body.password)
+    if body.display_name is not None:
+        user.display_name = body.display_name.strip() or None
+    if body.is_active is not None:
+        if user.id == admin.id and not body.is_active:
+            raise HTTPException(status_code=400, detail="Você não pode bloquear a si mesmo.")
+        user.is_active = body.is_active
     await session.commit()
     await session.refresh(user)
     return await _to_out(session, user)

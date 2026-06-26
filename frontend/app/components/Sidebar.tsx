@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Me, PlaylistSummary } from "../lib/api";
+import { avatarUrl, type Me, type PlaylistSummary } from "../lib/api";
 import QuotaBar from "./QuotaBar";
 import {
   HeartIcon,
@@ -31,6 +31,7 @@ interface Props {
   onDelete: (pl: PlaylistSummary) => void;
   onUpload: () => void;
   onAdmin: () => void;
+  onProfile: () => void;
   onLogout: () => void;
 }
 
@@ -57,6 +58,7 @@ export default function Sidebar({
   onDelete,
   onUpload,
   onAdmin,
+  onProfile,
   onLogout,
 }: Props) {
   const [creating, setCreating] = useState(false);
@@ -216,8 +218,25 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Rodapé: quota + conta */}
+      {/* Rodapé: perfil + quota + conta */}
       <div className="space-y-3 border-t border-white/5 pt-3">
+        <button
+          onClick={onProfile}
+          className="flex w-full items-center gap-2 rounded-lg p-1 text-left hover:bg-white/5"
+          title="Meu perfil"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-accent to-indigo-600 text-[10px] font-black">
+            {me.has_avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarUrl(me.id)} alt="" className="h-full w-full object-cover" />
+            ) : (
+              (me.display_name || me.email).slice(0, 2).toUpperCase()
+            )}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm">
+            {me.display_name || me.email}
+          </span>
+        </button>
         <QuotaBar me={me} />
         <div className="flex items-center gap-2">
           {me.is_admin && (

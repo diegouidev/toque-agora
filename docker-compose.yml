@@ -36,6 +36,8 @@ services:
       # Volume do host onde os .rar enviados ficam armazenados.
       # No WSL, mantenha em ./data/rars (filesystem do Linux), evite /mnt/c.
       - ${RARS_HOST_PATH:-./data/rars}:/data/rars
+      # Avatares de perfil.
+      - ${AVATARS_HOST_PATH:-./data/avatars}:/data/avatars
     depends_on:
       postgres:
         condition: service_healthy

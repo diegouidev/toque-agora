@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # Mapeado para um volume do host no docker-compose.
     data_dir: str = "/data/rars"
 
+    # Diretório dos avatares de perfil (em disco, no volume).
+    avatar_dir: str = "/data/avatars"
+
     # Origens permitidas no CORS (lista separada por vírgula).
     cors_origins: str = "http://localhost:3000"
 
@@ -23,8 +26,6 @@ class Settings(BaseSettings):
     debug: bool = False
     # Cookie de sessão Secure (só HTTPS). Deixe true em produção (Cloudflare = HTTPS).
     cookie_secure: bool = True
-    # Rodar `alembic upgrade head` automaticamente no startup (prático em produção).
-    run_migrations_on_startup: bool = False
 
     # ----- Autenticação / usuários -----
     # Valor sentinela: se permanecer este, o app recusa subir em produção.

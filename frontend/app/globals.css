@@ -58,3 +58,16 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 9999px;
   background: #fff;
 }
+
+/* Variante: thumb sempre visível (barra de progresso do player / volume). */
+input[type="range"].slider-visible::-webkit-slider-thumb {
+  opacity: 1;
+}
+/* Preenchimento até a posição (cor de destaque à esquerda do thumb). */
+input[type="range"].slider-fill {
+  background: linear-gradient(
+    to right,
+    var(--fill-color, #1db954) var(--fill, 0%),
+    rgba(255, 255, 255, 0.2) var(--fill, 0%)
+  );
+}

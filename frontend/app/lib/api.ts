@@ -56,6 +56,8 @@ export interface QuotaExceeded {
 export interface Me {
   id: number;
   email: string;
+  display_name: string | null;
+  has_avatar: boolean;
   is_admin: boolean;
   quota_bytes: number;
   used_bytes: number;
@@ -67,9 +69,33 @@ export interface Me {
 export interface AdminUser {
   id: number;
   email: string;
+  display_name: string | null;
   is_admin: boolean;
+  is_active: boolean;
+  has_avatar: boolean;
   quota_bytes: number;
   used_bytes: number;
+}
+
+export interface AdminUserDetail {
+  id: number;
+  email: string;
+  display_name: string | null;
+  is_admin: boolean;
+  is_active: boolean;
+  has_avatar: boolean;
+  quota_bytes: number;
+  used_bytes: number;
+  archive_count: number;
+  track_count: number;
+  playlist_count: number;
+  last_played_at: string | null;
+  created_at: string | null;
+}
+
+export function avatarUrl(userId: number): string {
+  // cache-bust simples por timestamp ao trocar; aqui só a base.
+  return `${API_URL}/api/users/${userId}/avatar`;
 }
 
 // Todas as chamadas enviam o cookie de sessão (HttpOnly).
@@ -156,18 +182,84 @@ export async function createUser(body: {
   }
 }
 
-export async function updateUserQuota(userId: number, quotaGb: number): Promise<void> {
+interface UserPatch {
+  quota_gb?: number;
+  password?: string;
+  display_name?: string;
+  is_active?: boolean;
+}
+export async function updateUser(userId: number, patch: UserPatch): Promise<void> {
   const res = await apiFetch(`/api/users/${userId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ quota_gb: quotaGb }),
+    body: JSON.stringify(patch),
   });
-  if (!res.ok) throw new Error("Falha ao atualizar quota");
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao atualizar usuário");
+  }
+}
+export async function updateUserQuota(userId: number, quotaGb: number): Promise<void> {
+  return updateUser(userId, { quota_gb: quotaGb });
+}
+export async function setUserBlocked(userId: number, blocked: boolean): Promise<void> {
+  return updateUser(userId, { is_active: !blocked });
+}
+export async function resetUserPassword(userId: number, password: string): Promise<void> {
+  return updateUser(userId, { password });
 }
 
 export async function deleteUser(userId: number): Promise<void> {
   const res = await apiFetch(`/api/users/${userId}`, { method: "DELETE" });
   if (!res.ok && res.status !== 204) throw new Error("Falha ao excluir usuário");
+}
+
+export async function fetchAdminUser(userId: number): Promise<AdminUserDetail> {
+  const res = await apiFetch(`/api/admin/users/${userId}`);
+  if (!res.ok) throw new Error("Falha ao carregar usuário");
+  return res.json();
+}
+export async function fetchAdminUserPlaylists(userId: number): Promise<PlaylistSummary[]> {
+  const res = await apiFetch(`/api/admin/users/${userId}/playlists`);
+  if (!res.ok) throw new Error("Falha ao carregar playlists");
+  return res.json();
+}
+
+// ---------- Meu perfil ----------
+export async function updateMe(displayName: string): Promise<Me> {
+  const res = await apiFetch("/api/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ display_name: displayName }),
+  });
+  if (!res.ok) throw new Error("Falha ao atualizar perfil");
+  return res.json();
+}
+export async function changeMyPassword(oldPwd: string, newPwd: string): Promise<void> {
+  const res = await apiFetch("/api/me/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao trocar senha");
+  }
+}
+export async function uploadAvatar(file: File): Promise<Me> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await apiFetch("/api/me/avatar", { method: "POST", body: form });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao enviar avatar");
+  }
+  return res.json();
+}
+export async function deleteAvatar(): Promise<Me> {
+  const res = await apiFetch("/api/me/avatar", { method: "DELETE" });
+  if (!res.ok) throw new Error("Falha ao remover avatar");
+  return res.json();
 }
 
 // ---------- Admin: visão geral ----------
@@ -183,7 +275,10 @@ export interface AdminTotals {
 export interface AdminUserStat {
   id: number;
   email: string;
+  display_name: string | null;
   is_admin: boolean;
+  is_active: boolean;
+  has_avatar: boolean;
   quota_bytes: number;
   used_bytes: number;
   archive_count: number;

@@ -73,6 +73,10 @@ async def login(
         _register_attempt(key)
         raise HTTPException(status_code=401, detail="Email ou senha inválidos.")
 
+    # Conta bloqueada pelo admin → recusa o login.
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Conta bloqueada. Fale com o administrador.")
+
     # Login ok → limpa tentativas e seta o cookie de sessão.
     _attempts.pop(key, None)
     _set_session_cookie(response, create_token(user))
@@ -98,6 +102,8 @@ async def _me_payload(user: User, session: AsyncSession) -> MeOut:
     return MeOut(
         id=user.id,
         email=user.email,
+        display_name=user.display_name,
+        has_avatar=user.avatar_filename is not None,
         is_admin=user.is_admin,
         quota_bytes=user.quota_bytes,
         used_bytes=used,

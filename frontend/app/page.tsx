@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import AddToPlaylistModal from "./components/AddToPlaylistModal";
 import AdminPanel from "./components/AdminPanel";
+import ProfileModal from "./components/ProfileModal";
 import BandGrid from "./components/BandGrid";
 import LoginScreen from "./components/LoginScreen";
 import MobileNav from "./components/MobileNav";
@@ -18,6 +19,7 @@ import UpgradeModal from "./components/UpgradeModal";
 import { EditIcon, MusicIcon, PlayIcon, UploadIcon } from "./components/icons";
 import {
   addToPlaylist,
+  avatarUrl,
   coverUrl,
   createPlaylist,
   deleteArchive,
@@ -80,6 +82,7 @@ export default function Home() {
   const currentTimeRef = useState(() => ({ t: 0 }))[0];
 
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [quotaInfo, setQuotaInfo] = useState<QuotaExceeded | null>(null);
@@ -638,6 +641,7 @@ export default function Home() {
         onDelete={onDeletePlaylist}
         onUpload={() => setShowUpload(true)}
         onAdmin={() => setShowAdmin(true)}
+        onProfile={() => setShowProfile(true)}
         onLogout={logout}
       />
 
@@ -662,6 +666,19 @@ export default function Home() {
                 Admin
               </button>
             )}
+            <button
+              onClick={() => setShowProfile(true)}
+              className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-accent to-indigo-600 text-[10px] font-black"
+              title="Meu perfil"
+              aria-label="Meu perfil"
+            >
+              {me.has_avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatarUrl(me.id)} alt="" className="h-full w-full object-cover" />
+              ) : (
+                (me.display_name || me.email).slice(0, 2).toUpperCase()
+              )}
+            </button>
             <button
               onClick={logout}
               className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
@@ -741,6 +758,7 @@ export default function Home() {
         />
       )}
       {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
+      {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
       {quotaInfo && (
         <UpgradeModal info={quotaInfo} email={me.email} onClose={() => setQuotaInfo(null)} />
       )}

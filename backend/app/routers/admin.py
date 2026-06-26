@@ -4,10 +4,19 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import require_admin
+from fastapi import HTTPException
+
+from ..auth import require_admin, used_bytes_for
 from ..database import get_session
-from ..models import Archive, Band, PlayHistory, Track, User
-from ..schemas import AdminOverview, AdminTotals, AdminUserStat, TopBand
+from ..models import Archive, Band, PlayHistory, Playlist, PlaylistItem, Track, User
+from ..schemas import (
+    AdminOverview,
+    AdminTotals,
+    AdminUserDetail,
+    AdminUserStat,
+    PlaylistSummary,
+    TopBand,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -77,7 +86,10 @@ async def overview(
         AdminUserStat(
             id=u.id,
             email=u.email,
+            display_name=u.display_name,
             is_admin=u.is_admin,
+            is_active=u.is_active,
+            has_avatar=u.avatar_filename is not None,
             quota_bytes=u.quota_bytes,
             used_bytes=int(used_bytes),
             archive_count=int(archive_count),
@@ -103,3 +115,79 @@ async def overview(
     ]
 
     return AdminOverview(totals=totals, users=users, top_bands=top_bands)
+
+
+@router.get("/users/{user_id}", response_model=AdminUserDetail)
+async def user_detail(
+    user_id: int,
+    _admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> AdminUserDetail:
+    """Perfil completo de um usuário (admin)."""
+    u = await session.get(User, user_id)
+    if u is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    archive_count = int(
+        await session.scalar(
+            select(func.count(Archive.id)).where(Archive.owner_id == user_id)
+        )
+        or 0
+    )
+    track_count = int(
+        await session.scalar(
+            select(func.count(Track.id))
+            .select_from(Track)
+            .join(Band, Band.id == Track.band_id)
+            .join(Archive, Archive.id == Band.archive_id)
+            .where(Archive.owner_id == user_id)
+        )
+        or 0
+    )
+    playlist_count = int(
+        await session.scalar(
+            select(func.count(Playlist.id)).where(Playlist.owner_id == user_id)
+        )
+        or 0
+    )
+    last_played_at = await session.scalar(
+        select(func.max(PlayHistory.played_at)).where(PlayHistory.owner_id == user_id)
+    )
+    used = await used_bytes_for(session, user_id)
+
+    return AdminUserDetail(
+        id=u.id,
+        email=u.email,
+        display_name=u.display_name,
+        is_admin=u.is_admin,
+        is_active=u.is_active,
+        has_avatar=u.avatar_filename is not None,
+        quota_bytes=u.quota_bytes,
+        used_bytes=used,
+        archive_count=archive_count,
+        track_count=track_count,
+        playlist_count=playlist_count,
+        last_played_at=last_played_at,
+        created_at=u.created_at,
+    )
+
+
+@router.get("/users/{user_id}/playlists", response_model=list[PlaylistSummary])
+async def user_playlists(
+    user_id: int,
+    _admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> list[PlaylistSummary]:
+    """Playlists de um usuário (admin)."""
+    count_subq = (
+        select(PlaylistItem.playlist_id, func.count(PlaylistItem.id).label("c"))
+        .group_by(PlaylistItem.playlist_id)
+        .subquery()
+    )
+    res = await session.execute(
+        select(Playlist, func.coalesce(count_subq.c.c, 0))
+        .outerjoin(count_subq, Playlist.id == count_subq.c.playlist_id)
+        .where(Playlist.owner_id == user_id)
+        .order_by(Playlist.created_at.desc())
+    )
+    return [PlaylistSummary(id=p.id, name=p.name, track_count=c) for p, c in res.all()]

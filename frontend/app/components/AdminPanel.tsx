@@ -3,10 +3,17 @@
 import { useEffect, useState } from "react";
 import {
   type AdminOverview,
+  type AdminUserDetail,
   type AdminUserStat,
+  type PlaylistSummary,
+  avatarUrl,
   createUser,
   deleteUser,
   fetchAdminOverview,
+  fetchAdminUser,
+  fetchAdminUserPlaylists,
+  resetUserPassword,
+  setUserBlocked,
   updateUserQuota,
 } from "../lib/api";
 
@@ -79,6 +86,48 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
       load();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Falha ao excluir");
+    }
+  }
+
+  async function toggleBlock(u: AdminUserStat) {
+    const block = u.is_active; // se está ativo, vamos bloquear
+    if (!confirm(`${block ? "Bloquear" : "Desbloquear"} o login de ${u.email}?`)) return;
+    try {
+      await setUserBlocked(u.id, block);
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Falha");
+    }
+  }
+
+  async function resetPassword(u: AdminUserStat) {
+    const pwd = prompt(`Nova senha para ${u.email} (mín. 8 caracteres):`);
+    if (pwd == null) return;
+    if (pwd.length < 8) {
+      alert("A senha precisa ter ao menos 8 caracteres.");
+      return;
+    }
+    try {
+      await resetUserPassword(u.id, pwd);
+      alert("Senha redefinida.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Falha");
+    }
+  }
+
+  // Detalhe de um usuário (perfil + playlists).
+  const [detail, setDetail] = useState<AdminUserDetail | null>(null);
+  const [detailPls, setDetailPls] = useState<PlaylistSummary[]>([]);
+  async function openDetail(u: AdminUserStat) {
+    try {
+      const [d, pls] = await Promise.all([
+        fetchAdminUser(u.id),
+        fetchAdminUserPlaylists(u.id),
+      ]);
+      setDetail(d);
+      setDetailPls(pls);
+    } catch {
+      /* ignore */
     }
   }
 
@@ -160,31 +209,65 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
           {(data?.users ?? []).map((u) => (
             <div
               key={u.id}
-              className="flex items-center justify-between gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm"
+              className={`flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm ${
+                u.is_active ? "bg-white/5" : "bg-red-950/40"
+              }`}
             >
-              <div className="min-w-0">
-                <p className="truncate font-medium">
-                  {u.email} {u.is_admin && <span className="text-accent">(admin)</span>}
-                </p>
-                <p className="text-xs text-zinc-400">
-                  {fmtBytes(u.used_bytes)} / {(u.quota_bytes / GB).toFixed(0)} GB ·{" "}
-                  {u.track_count} faixas · ativo {fmtDate(u.last_played_at)}
-                </p>
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-accent to-indigo-600 text-[10px] font-black">
+                  {u.has_avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={avatarUrl(u.id)} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    (u.display_name || u.email).slice(0, 2).toUpperCase()
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-medium">
+                    {u.display_name ? `${u.display_name} · ` : ""}
+                    {u.email} {u.is_admin && <span className="text-accent">(admin)</span>}
+                    {!u.is_active && <span className="ml-1 text-red-400">(bloqueado)</span>}
+                  </p>
+                  <p className="text-xs text-zinc-400">
+                    {fmtBytes(u.used_bytes)} / {(u.quota_bytes / GB).toFixed(0)} GB ·{" "}
+                    {u.track_count} faixas · ativo {fmtDate(u.last_played_at)}
+                  </p>
+                </div>
               </div>
-              <div className="flex shrink-0 gap-1">
+              <div className="flex shrink-0 flex-wrap gap-1">
+                <button
+                  onClick={() => openDetail(u)}
+                  className="rounded-full bg-white/10 px-3 py-1 text-xs hover:bg-white/20"
+                >
+                  Perfil
+                </button>
                 <button
                   onClick={() => changeQuota(u)}
                   className="rounded-full bg-white/10 px-3 py-1 text-xs hover:bg-white/20"
                 >
                   Quota
                 </button>
+                <button
+                  onClick={() => resetPassword(u)}
+                  className="rounded-full bg-white/10 px-3 py-1 text-xs hover:bg-white/20"
+                >
+                  Senha
+                </button>
                 {!u.is_admin && (
-                  <button
-                    onClick={() => remove(u)}
-                    className="rounded-full bg-red-600/80 px-3 py-1 text-xs hover:bg-red-600"
-                  >
-                    Excluir
-                  </button>
+                  <>
+                    <button
+                      onClick={() => toggleBlock(u)}
+                      className="rounded-full bg-white/10 px-3 py-1 text-xs hover:bg-white/20"
+                    >
+                      {u.is_active ? "Bloquear" : "Desbloquear"}
+                    </button>
+                    <button
+                      onClick={() => remove(u)}
+                      className="rounded-full bg-red-600/80 px-3 py-1 text-xs hover:bg-red-600"
+                    >
+                      Excluir
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -212,6 +295,78 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
       </div>
+
+      {/* Detalhe do usuário (perfil + playlists) */}
+      {detail && (
+        <div
+          className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/80 px-4 py-8"
+          onClick={() => setDetail(null)}
+        >
+          <div
+            className="w-full max-w-md space-y-4 rounded-2xl border border-white/10 bg-surface p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-accent to-indigo-600 text-sm font-black">
+                {detail.has_avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarUrl(detail.id)} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  (detail.display_name || detail.email).slice(0, 2).toUpperCase()
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-bold">{detail.display_name || detail.email}</p>
+                <p className="truncate text-xs text-zinc-400">{detail.email}</p>
+              </div>
+              <button onClick={() => setDetail(null)} className="text-zinc-400 hover:text-white">
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <Info label="Status" value={detail.is_active ? "Ativo" : "Bloqueado"} />
+              <Info label="Admin" value={detail.is_admin ? "Sim" : "Não"} />
+              <Info label="Uso" value={`${fmtBytes(detail.used_bytes)} / ${(detail.quota_bytes / GB).toFixed(0)} GB`} />
+              <Info label="Arquivos" value={String(detail.archive_count)} />
+              <Info label="Faixas" value={String(detail.track_count)} />
+              <Info label="Playlists" value={String(detail.playlist_count)} />
+              <Info label="Último play" value={fmtDate(detail.last_played_at)} />
+              <Info label="Criado em" value={fmtDate(detail.created_at)} />
+            </div>
+
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                Playlists ({detailPls.length})
+              </p>
+              {detailPls.length === 0 ? (
+                <p className="text-sm text-zinc-500">Nenhuma playlist.</p>
+              ) : (
+                <div className="space-y-1">
+                  {detailPls.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex justify-between rounded-lg bg-black/20 px-3 py-1.5 text-sm"
+                    >
+                      <span className="truncate">{p.name}</span>
+                      <span className="shrink-0 text-xs text-zinc-400">{p.track_count} faixas</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-black/20 px-3 py-2">
+      <p className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className="truncate font-medium">{value}</p>
     </div>
   );
 }
