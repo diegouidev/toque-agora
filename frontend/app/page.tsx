@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import AddToPlaylistModal from "./components/AddToPlaylistModal";
 import AdminPanel from "./components/AdminPanel";
 import ProfileModal from "./components/ProfileModal";
+import SubscribeView from "./components/SubscribeView";
 import BandCategories from "./components/BandCategories";
 import BandGrid from "./components/BandGrid";
 import LoginScreen from "./components/LoginScreen";
@@ -686,24 +687,8 @@ export default function Home() {
           </button>
         </div>
       ) : (
-        <div className="rounded-2xl border border-dashed border-white/10 px-6 py-12 text-center">
-          <p className="text-sm text-zinc-300">
-            {me.plan_name
-              ? "Seu plano ainda não tem CDs liberados."
-              : "Você ainda não tem um plano."}
-          </p>
-          <p className="mt-1 text-xs text-zinc-500">Fale com o administrador para liberar músicas.</p>
-          {me.admin_whatsapp && (
-            <a
-              href={`https://wa.me/${me.admin_whatsapp.replace(/\D/g, "")}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#25D366] px-5 py-2 text-sm font-semibold text-black"
-            >
-              💬 Falar no WhatsApp
-            </a>
-          )}
-        </div>
+        // Ouvinte sem CDs liberados → vitrine de planos (assinar).
+        <SubscribeView />
       )}
     </section>
   );

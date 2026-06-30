@@ -72,10 +72,12 @@ class User(Base):
     plan_id: Mapped[int | None] = mapped_column(
         ForeignKey("plans.id", ondelete="SET NULL"), nullable=True
     )
-    # Expiração do plano (preparado para assinatura; sem uso por enquanto).
+    # Expiração do plano (assinatura): acesso vale enquanto futuro.
     plan_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # ID do cliente no Asaas (reusado entre assinaturas).
+    asaas_customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -96,6 +98,8 @@ class Plan(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    # Preço da assinatura mensal em centavos (ex. 1990 = R$ 19,90).
+    price_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -302,3 +306,45 @@ class PlayHistory(Base):
     )
 
     track: Mapped["Track"] = relationship()
+
+
+class Subscription(Base):
+    """Assinatura de um usuário a um plano (gerida no Asaas)."""
+
+    __tablename__ = "subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("plans.id", ondelete="SET NULL"), nullable=True
+    )
+    # ID da assinatura no Asaas (sub_...).
+    asaas_subscription_id: Mapped[str] = mapped_column(
+        String(64), index=True, nullable=False
+    )
+    # pending | active | overdue | canceled
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    current_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class AppConfig(Base):
+    """Configuração editável pelo admin (chave/valor). Ex.: credenciais do Asaas.
+
+    Fica no banco para que cada instância (ex.: ao revender o sistema) configure
+    o próprio gateway pelo painel, sem mexer no .env/servidor.
+    """
+
+    __tablename__ = "app_config"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(1024), nullable=False, default="")
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
+    )

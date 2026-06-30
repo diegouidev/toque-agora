@@ -23,6 +23,7 @@ import {
   updateUser,
   updateUserQuota,
 } from "../lib/api";
+import AsaasConfig from "./AsaasConfig";
 import PlansManager from "./PlansManager";
 
 const GB = 1024 * 1024 * 1024;
@@ -341,6 +342,9 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
 
         {/* Planos */}
         <PlansManager />
+
+        {/* Configuração de pagamentos (Asaas) */}
+        <AsaasConfig />
 
         {/* Lista de usuários com estatísticas */}
         <div className="space-y-2">

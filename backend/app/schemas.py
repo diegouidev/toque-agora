@@ -84,16 +84,55 @@ class PlanOut(BaseModel):
 
     id: int
     name: str
+    price_cents: int = 0
     categories: list["CategoryOut"] = []
     user_count: int = 0
 
 
 class PlanCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+    price_cents: int = Field(default=0, ge=0)
 
 
 class PlanCategoriesUpdate(BaseModel):
     category_ids: list[int]
+
+
+# ----- Auth público / Billing / Config -----
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    display_name: str | None = Field(default=None, max_length=255)
+
+
+class PublicPlan(BaseModel):
+    """Plano para a vitrine (sem dados internos)."""
+
+    id: int
+    name: str
+    price_cents: int
+    category_names: list[str] = []
+
+
+class SubscribeIn(BaseModel):
+    plan_id: int
+
+
+class SubscribeOut(BaseModel):
+    invoice_url: str | None = None
+    status: str
+
+
+class BillingStatus(BaseModel):
+    status: str  # none | pending | active | overdue | canceled
+    plan_name: str | None = None
+    expires_at: datetime | None = None
+
+
+class AppConfigUpdate(BaseModel):
+    asaas_api_key: str | None = None
+    asaas_base_url: str | None = None
+    asaas_webhook_token: str | None = None
 
 
 class AdminUserDetail(BaseModel):

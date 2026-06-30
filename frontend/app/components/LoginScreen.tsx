@@ -4,9 +4,11 @@ import { useState } from "react";
 import { useAuth } from "../lib/auth-context";
 
 export default function LoginScreen() {
-  const { login } = useAuth();
+  const { login, register } = useAuth();
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -15,13 +17,16 @@ export default function LoginScreen() {
     setError(null);
     setBusy(true);
     try {
-      await login(email.trim(), password);
+      if (mode === "login") await login(email.trim(), password);
+      else await register(email.trim(), password, name.trim() || undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha no login");
+      setError(err instanceof Error ? err.message : "Falha");
     } finally {
       setBusy(false);
     }
   }
+
+  const isRegister = mode === "register";
 
   return (
     <main className="flex min-h-screen items-center justify-center px-5">
@@ -36,10 +41,22 @@ export default function LoginScreen() {
           <h1 className="font-display text-2xl font-black uppercase tracking-tight">
             Toque <span className="text-accent">Agora</span>
           </h1>
-          <p className="mt-1 text-sm text-zinc-400">A sua Playlist preferida</p>
+          <p className="mt-1 text-sm text-zinc-400">
+            {isRegister ? "Crie sua conta e assine um plano" : "A sua Playlist preferida"}
+          </p>
         </div>
 
         <div className="space-y-3">
+          {isRegister && (
+            <input
+              type="text"
+              autoComplete="name"
+              placeholder="Seu nome (opcional)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-accent"
+            />
+          )}
           <input
             type="email"
             inputMode="email"
@@ -52,11 +69,12 @@ export default function LoginScreen() {
           />
           <input
             type="password"
-            autoComplete="current-password"
-            placeholder="Senha"
+            autoComplete={isRegister ? "new-password" : "current-password"}
+            placeholder={isRegister ? "Senha (mín. 8)" : "Senha"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            minLength={isRegister ? 8 : undefined}
             className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-accent"
           />
         </div>
@@ -68,12 +86,19 @@ export default function LoginScreen() {
           disabled={busy}
           className="w-full rounded-full bg-accent py-3 text-sm font-bold text-black transition-transform hover:scale-[1.02] disabled:opacity-50"
         >
-          {busy ? "Entrando…" : "Entrar"}
+          {busy ? "Aguarde…" : isRegister ? "Criar conta" : "Entrar"}
         </button>
 
-        <p className="text-center text-xs text-zinc-500">
-          Não tem conta? Fale com o administrador.
-        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setMode(isRegister ? "login" : "register");
+            setError(null);
+          }}
+          className="w-full text-center text-xs text-zinc-400 hover:text-white"
+        >
+          {isRegister ? "Já tenho conta — entrar" : "Não tem conta? Criar agora"}
+        </button>
       </form>
     </main>
   );

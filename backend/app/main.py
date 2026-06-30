@@ -7,8 +7,10 @@ from .config import settings
 from .database import init_db
 from .routers import (
     admin,
+    appconfig,
     archives,
     auth_router,
+    billing,
     categories,
     history,
     plans,
@@ -72,6 +74,8 @@ app.include_router(auth_router.router)
 app.include_router(profile.router)
 app.include_router(users.router)
 app.include_router(admin.router)
+app.include_router(appconfig.router)
+app.include_router(billing.router)
 app.include_router(upload.router)
 app.include_router(archives.router)
 app.include_router(categories.router)

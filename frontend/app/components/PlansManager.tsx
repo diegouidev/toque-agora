@@ -9,12 +9,18 @@ import {
   fetchCategories,
   fetchPlans,
   setPlanCategories,
+  updatePlan,
 } from "../lib/api";
+
+function brl(cents: number): string {
+  return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
 export default function PlansManager() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [name, setName] = useState("");
+  const [price, setPrice] = useState(""); // em reais (ex. "19,90")
 
   async function load() {
     try {
@@ -29,15 +35,31 @@ export default function PlansManager() {
     load();
   }, []);
 
+  function parsePrice(v: string): number {
+    return Math.round(Number(v.replace(",", ".")) * 100) || 0;
+  }
+
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     try {
-      await createPlan(name.trim());
+      await createPlan(name.trim(), parsePrice(price));
       setName("");
+      setPrice("");
       load();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Falha ao criar plano");
+    }
+  }
+
+  async function editPrice(plan: Plan) {
+    const val = prompt(`Preço mensal de "${plan.name}" (R$):`, String((plan.price_cents / 100).toFixed(2)).replace(".", ","));
+    if (val == null) return;
+    try {
+      await updatePlan(plan.id, plan.name, parsePrice(val));
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Falha");
     }
   }
 
@@ -80,6 +102,13 @@ export default function PlansManager() {
           placeholder="Novo plano (ex. Plano Forró)"
           className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none focus:border-accent"
         />
+        <input
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          placeholder="R$/mês"
+          inputMode="decimal"
+          className="w-24 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none focus:border-accent"
+        />
         <button className="rounded-lg bg-accent px-4 text-sm font-semibold text-black">
           Criar
         </button>
@@ -94,7 +123,14 @@ export default function PlansManager() {
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-semibold">
               {p.name}{" "}
-              <span className="text-xs font-normal text-zinc-400">
+              <button
+                onClick={() => editPrice(p)}
+                className="text-xs font-normal text-accent hover:underline"
+                title="Editar preço"
+              >
+                {p.price_cents > 0 ? `${brl(p.price_cents)}/mês` : "definir preço"}
+              </button>
+              <span className="ml-1 text-xs font-normal text-zinc-400">
                 · {p.user_count} usuário{p.user_count === 1 ? "" : "s"}
               </span>
             </p>

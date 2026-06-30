@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     # WhatsApp do admin para upgrade de quota (DDI+DDD+número, só dígitos).
     admin_whatsapp: str = ""
 
+    # ----- Pagamentos (Asaas) -----
+    asaas_api_key: str = ""
+    asaas_base_url: str = "https://sandbox.asaas.com/api/v3"
+    # Segredo que validamos no header do webhook (configurado no painel Asaas).
+    asaas_webhook_token: str = ""
+    # Auto-cadastro público (vitrine). Desligue para travar o registro.
+    public_signup_enabled: bool = True
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

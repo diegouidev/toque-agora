@@ -28,6 +28,7 @@ async def _to_out(session: AsyncSession, plan: Plan) -> PlanOut:
     return PlanOut(
         id=plan.id,
         name=plan.name,
+        price_cents=plan.price_cents,
         categories=[CategoryOut(id=c.id, name=c.name, slug=c.slug) for c in plan.categories],
         user_count=user_count,
     )
@@ -54,7 +55,7 @@ async def create_plan(
     exists = await session.execute(select(Plan).where(Plan.name == name))
     if exists.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Já existe um plano com esse nome.")
-    plan = Plan(name=name)
+    plan = Plan(name=name, price_cents=max(0, body.price_cents))
     session.add(plan)
     await session.commit()
     await session.refresh(plan, attribute_names=["categories"])
@@ -72,6 +73,7 @@ async def rename_plan(
     if plan is None:
         raise HTTPException(status_code=404, detail="Plano não encontrado.")
     plan.name = body.name.strip()
+    plan.price_cents = max(0, body.price_cents)
     await session.commit()
     return await _to_out(session, plan)
 

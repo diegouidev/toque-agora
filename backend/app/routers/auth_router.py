@@ -8,13 +8,14 @@ from ..auth import (
     create_token,
     get_current_user,
     get_user_by_email,
+    hash_password,
     used_bytes_for,
     verify_password,
 )
 from ..config import settings
 from ..database import get_session
 from ..models import Plan, User
-from ..schemas import LoginIn, MeOut
+from ..schemas import LoginIn, MeOut, RegisterIn
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -79,6 +80,40 @@ async def login(
 
     # Login ok → limpa tentativas e seta o cookie de sessão.
     _attempts.pop(key, None)
+    _set_session_cookie(response, create_token(user))
+    return await _me_payload(user, session)
+
+
+@router.post("/register", response_model=MeOut)
+async def register(
+    body: RegisterIn,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+) -> MeOut:
+    """Auto-cadastro público (vitrine). Cria ouvinte sem plano (sem acesso até assinar)."""
+    if not settings.public_signup_enabled:
+        raise HTTPException(status_code=403, detail="Cadastro público desativado.")
+    key = _rate_limit_key(request, body.email)
+    _check_rate_limit(key)
+
+    if await get_user_by_email(session, body.email):
+        _register_attempt(key)
+        raise HTTPException(status_code=409, detail="Já existe uma conta com esse email.")
+
+    user = User(
+        email=body.email,
+        password_hash=hash_password(body.password),
+        display_name=body.display_name,
+        is_admin=False,
+        can_upload=False,  # ouvinte/cliente
+        is_active=True,
+        quota_bytes=0,
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+
     _set_session_cookie(response, create_token(user))
     return await _me_payload(user, session)
 

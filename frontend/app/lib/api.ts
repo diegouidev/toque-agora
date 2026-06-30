@@ -66,8 +66,22 @@ export interface QuotaExceeded {
 export interface Plan {
   id: number;
   name: string;
+  price_cents: number;
   categories: Category[];
   user_count: number;
+}
+
+export interface PublicPlan {
+  id: number;
+  name: string;
+  price_cents: number;
+  category_names: string[];
+}
+
+export interface BillingStatus {
+  status: string; // none | pending | active | overdue | canceled
+  plan_name: string | null;
+  expires_at: string | null;
 }
 
 export interface Me {
@@ -141,6 +155,24 @@ export async function login(email: string, password: string): Promise<Me> {
   return res.json();
 }
 
+export async function register(
+  email: string,
+  password: string,
+  displayName?: string,
+): Promise<Me> {
+  const res = await fetch(`${API_URL}/api/auth/register`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, display_name: displayName || null }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : "Falha no cadastro");
+  }
+  return res.json();
+}
+
 export async function logout(): Promise<void> {
   await apiFetch("/api/auth/logout", { method: "POST" });
 }
@@ -208,16 +240,29 @@ export async function fetchPlans(): Promise<Plan[]> {
   if (!res.ok) throw new Error("Falha ao listar planos");
   return res.json();
 }
-export async function createPlan(name: string): Promise<Plan> {
+export async function createPlan(name: string, priceCents: number): Promise<Plan> {
   const res = await apiFetch("/api/plans", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, price_cents: priceCents }),
   });
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
     throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao criar plano");
   }
+  return res.json();
+}
+export async function updatePlan(
+  id: number,
+  name: string,
+  priceCents: number,
+): Promise<Plan> {
+  const res = await apiFetch(`/api/plans/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, price_cents: priceCents }),
+  });
+  if (!res.ok) throw new Error("Falha ao atualizar plano");
   return res.json();
 }
 export async function setPlanCategories(
@@ -570,6 +615,57 @@ export function uploadCompleteEndpoint(): string {
 }
 export function uploadAbortEndpoint(): string {
   return `${API_URL}/api/upload/abort`;
+}
+
+// ---------- Billing (assinatura Asaas) ----------
+export async function fetchBillingPlans(): Promise<PublicPlan[]> {
+  const res = await apiFetch("/api/billing/plans");
+  if (!res.ok) throw new Error("Falha ao listar planos");
+  return res.json();
+}
+export async function subscribe(
+  planId: number,
+): Promise<{ invoice_url: string | null; status: string }> {
+  const res = await apiFetch("/api/billing/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plan_id: planId }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao assinar");
+  }
+  return res.json();
+}
+export async function fetchBillingStatus(): Promise<BillingStatus> {
+  const res = await apiFetch("/api/billing/status");
+  if (!res.ok) throw new Error("Falha ao consultar assinatura");
+  return res.json();
+}
+
+// ---------- Config do app (admin: credenciais Asaas) ----------
+export interface AppConfigView {
+  asaas_base_url: string;
+  asaas_api_key_set: boolean;
+  asaas_webhook_token_set: boolean;
+}
+export async function fetchAppConfig(): Promise<AppConfigView> {
+  const res = await apiFetch("/api/admin/config");
+  if (!res.ok) throw new Error("Falha ao carregar configurações");
+  return res.json();
+}
+export async function updateAppConfig(body: {
+  asaas_api_key?: string;
+  asaas_base_url?: string;
+  asaas_webhook_token?: string;
+}): Promise<AppConfigView> {
+  const res = await apiFetch("/api/admin/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("Falha ao salvar configurações");
+  return res.json();
 }
 
 // ---------- WhatsApp upgrade ----------

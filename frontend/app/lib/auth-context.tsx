@@ -11,6 +11,7 @@ import {
   fetchMe,
   login as apiLogin,
   logout as apiLogout,
+  register as apiRegister,
   type Me,
 } from "./api";
 
@@ -18,6 +19,7 @@ interface AuthState {
   me: Me | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -45,13 +47,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setMe(m);
   }, []);
 
+  const register = useCallback(
+    async (email: string, password: string, displayName?: string) => {
+      const m = await apiRegister(email, password, displayName);
+      setMe(m);
+    },
+    [],
+  );
+
   const logout = useCallback(async () => {
     await apiLogout();
     setMe(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ me, loading, login, logout, refresh }}>
+    <AuthContext.Provider value={{ me, loading, login, register, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );
