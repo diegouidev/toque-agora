@@ -746,7 +746,9 @@ export default function Home() {
   );
 
   const tabContent =
-    tab === "search" ? (
+    tab === "subscribe" ? (
+      <SubscribeView />
+    ) : tab === "search" ? (
       <SearchView
         onOpenBand={openBand}
         onPlayBand={(b) => playFrom(() => openBand(b))}
@@ -893,7 +895,7 @@ export default function Home() {
         }}
       />
 
-      <MobileNav tab={tab} onTab={onTab} />
+      <MobileNav tab={tab} onTab={onTab} showSubscribe={!me.can_upload} />
 
       {showUpload && (
         <UploadModal

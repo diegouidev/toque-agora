@@ -10,10 +10,11 @@ import {
   PlusIcon,
   SearchIcon,
   ShareIcon,
+  StarIcon,
   UploadIcon,
 } from "./icons";
 
-export type Tab = "home" | "search" | "library";
+export type Tab = "home" | "search" | "library" | "subscribe";
 
 interface Props {
   me: Me;
@@ -87,6 +88,18 @@ export default function Sidebar({
             {label}
           </button>
         ))}
+        {/* Ouvinte: acesso à tela de assinatura (planos, vencimento, cancelar). */}
+        {!me.can_upload && (
+          <button
+            onClick={() => onTab("subscribe")}
+            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+              tab === "subscribe" ? "bg-white/10 text-white" : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            <StarIcon className="h-5 w-5" />
+            Minha assinatura
+          </button>
+        )}
         {me.can_upload && (
           <button
             onClick={onUpload}

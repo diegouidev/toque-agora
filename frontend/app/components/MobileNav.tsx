@@ -1,11 +1,12 @@
 "use client";
 
 import type { Tab } from "./Sidebar";
-import { HomeIcon, LibraryIcon, SearchIcon } from "./icons";
+import { HomeIcon, LibraryIcon, SearchIcon, StarIcon } from "./icons";
 
 interface Props {
   tab: Tab;
   onTab: (tab: Tab) => void;
+  showSubscribe?: boolean;
 }
 
 const NAV: { id: Tab; label: string; Icon: typeof HomeIcon }[] = [
@@ -15,11 +16,14 @@ const NAV: { id: Tab; label: string; Icon: typeof HomeIcon }[] = [
 ];
 
 /** Barra de abas inferior (mobile/tablet). O mini-player fica logo acima dela. */
-export default function MobileNav({ tab, onTab }: Props) {
+export default function MobileNav({ tab, onTab, showSubscribe }: Props) {
+  const items = showSubscribe
+    ? [...NAV, { id: "subscribe" as Tab, label: "Assinatura", Icon: StarIcon }]
+    : NAV;
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-black/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
       <div className="mx-auto flex max-w-md items-stretch justify-around">
-        {NAV.map(({ id, label, Icon }) => (
+        {items.map(({ id, label, Icon }) => (
           <button
             key={id}
             onClick={() => onTab(id)}
