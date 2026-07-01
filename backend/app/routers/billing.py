@@ -108,6 +108,37 @@ async def billing_status(
     )
 
 
+@router.post("/cancel", response_model=BillingStatus)
+async def cancel_subscription(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> BillingStatus:
+    """Cancela a assinatura do cliente no Asaas (sem novas cobranças).
+
+    O acesso permanece até `plan_expires_at` (o corte é por vencimento).
+    """
+    res = await session.execute(
+        select(Subscription)
+        .where(Subscription.user_id == user.id)
+        .order_by(Subscription.created_at.desc())
+    )
+    sub = res.scalars().first()
+    if sub is None or sub.status == "canceled":
+        raise HTTPException(status_code=404, detail="Nenhuma assinatura ativa.")
+
+    await asaas.delete_subscription(session, sub.asaas_subscription_id)
+    sub.status = "canceled"
+    await session.commit()
+
+    plan_name = None
+    if user.plan_id:
+        plan = await session.get(Plan, user.plan_id)
+        plan_name = plan.name if plan else None
+    return BillingStatus(
+        status="canceled", plan_name=plan_name, expires_at=user.plan_expires_at
+    )
+
+
 @router.post("/webhook")
 async def asaas_webhook(
     request: Request,

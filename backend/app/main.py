@@ -16,6 +16,7 @@ from .routers import (
     plans,
     playlists,
     profile,
+    public,
     search,
     stream,
     upload,
@@ -83,6 +84,7 @@ app.include_router(plans.router)
 app.include_router(playlists.router)
 app.include_router(search.router)
 app.include_router(history.router)
+app.include_router(public.router)
 app.include_router(stream.router)
 
 

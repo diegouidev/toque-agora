@@ -236,6 +236,33 @@ class CategoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
 
 
+# ---------------- Vitrine pública (sem login) ----------------
+class PublicTrack(BaseModel):
+    """Faixa exibida na página pública do CD (sem caminho interno)."""
+
+    id: int
+    display_name: str
+    duration: int = 0
+
+
+class PublicCd(BaseModel):
+    """CD (banda) na vitrine pública."""
+
+    id: int
+    name: str
+    cover: bool = False
+    track_count: int = 0
+    category_names: list[str] = []
+    owner_name: str | None = None
+    created_at: datetime | None = None
+
+
+class PublicCdDetail(PublicCd):
+    """Detalhe do CD público, com a tracklist para a prévia."""
+
+    tracks: list[PublicTrack] = []
+
+
 class BandCategoriesUpdate(BaseModel):
     """Define o conjunto de categorias de um CD (lista de ids)."""
 
@@ -279,6 +306,8 @@ class UploadComplete(BaseModel):
 
     upload_id: str = Field(min_length=8, max_length=64)
     filename: str = Field(min_length=1, max_length=512)
+    # Categoria opcional para já marcar o(s) CD(s) criado(s) no upload.
+    category_id: int | None = None
 
 
 # ---------------- Admin (estatísticas) ----------------

@@ -24,8 +24,12 @@ asyncio.run(ping())
 done
 
 # Banco LEGADO: já tem as tabelas do app (ex. 'users') mas não tem 'alembic_version'
-# (foi criado por create_all antes do Alembic). Nesse caso, marca como migrado
-# (stamp head) para não tentar recriar tabelas existentes.
+# (foi criado por create_all antes do Alembic). Nesse caso, marca na revisão BASELINE
+# (não em head!) — o baseline representa o schema pré-Alembic; o 'upgrade head' abaixo
+# aplica então as migrações incrementais (colunas/tabelas novas).
+# ATENÇÃO: usar 'stamp head' aqui é um BUG — marca tudo como migrado sem rodar os ALTERs,
+# deixando o banco sem as colunas novas (ex.: users.is_active) e quebrando o startup.
+BASELINE_REV="892f4e6e2e3a"
 LEGACY=$(python -c "
 import asyncio
 from sqlalchemy import text
@@ -39,8 +43,8 @@ asyncio.run(check())
 " 2>/dev/null || echo "0")
 
 if [ "$LEGACY" = "1" ]; then
-  echo "[entrypoint] Banco legado detectado — marcando como migrado (alembic stamp head)."
-  alembic stamp head
+  echo "[entrypoint] Banco legado detectado — marcando na baseline ($BASELINE_REV)."
+  alembic stamp "$BASELINE_REV"
 fi
 
 echo "[entrypoint] alembic upgrade head"

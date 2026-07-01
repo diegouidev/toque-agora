@@ -12,6 +12,8 @@ import {
 interface Props {
   onUploaded: (result: UploadResult) => void;
   onQuotaExceeded?: (info: QuotaExceeded) => void;
+  // Se informado, os CDs enviados já nascem marcados com esta categoria.
+  categoryId?: number | null;
 }
 
 interface FileProgress {
@@ -63,7 +65,7 @@ function parse413(text: string): UploadOneResult {
   }
 }
 
-export default function Uploader({ onUploaded, onQuotaExceeded }: Props) {
+export default function Uploader({ onUploaded, onQuotaExceeded, categoryId }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [items, setItems] = useState<FileProgress[] | null>(null);
@@ -123,7 +125,11 @@ export default function Uploader({ onUploaded, onQuotaExceeded }: Props) {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ upload_id: uploadId, filename: file.name }),
+        body: JSON.stringify({
+          upload_id: uploadId,
+          filename: file.name,
+          category_id: categoryId ?? null,
+        }),
       });
       if (res.status === 201) {
         return { result: (await res.json()) as UploadResult };

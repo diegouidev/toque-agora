@@ -3,9 +3,15 @@
 import { useState } from "react";
 import { useAuth } from "../lib/auth-context";
 
-export default function LoginScreen() {
+export default function LoginScreen({
+  initialMode = "login",
+  onBack,
+}: {
+  initialMode?: "login" | "register";
+  onBack?: () => void;
+} = {}) {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -99,6 +105,16 @@ export default function LoginScreen() {
         >
           {isRegister ? "Já tenho conta — entrar" : "Não tem conta? Criar agora"}
         </button>
+
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="w-full text-center text-xs text-zinc-500 hover:text-white"
+          >
+            ← Voltar
+          </button>
+        )}
       </form>
     </main>
   );

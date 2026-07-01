@@ -642,6 +642,52 @@ export async function fetchBillingStatus(): Promise<BillingStatus> {
   if (!res.ok) throw new Error("Falha ao consultar assinatura");
   return res.json();
 }
+export async function cancelSubscription(): Promise<BillingStatus> {
+  const res = await apiFetch("/api/billing/cancel", { method: "POST" });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao cancelar");
+  }
+  return res.json();
+}
+
+// ---------- Vitrine pública (sem login) ----------
+export interface PublicCd {
+  id: number;
+  name: string;
+  cover: boolean;
+  track_count: number;
+  category_names: string[];
+  owner_name: string | null;
+  created_at: string | null;
+}
+export interface PublicTrack {
+  id: number;
+  display_name: string;
+  duration: number;
+}
+export interface PublicCdDetail extends PublicCd {
+  tracks: PublicTrack[];
+}
+
+export async function fetchPublicCds(limit = 60): Promise<PublicCd[]> {
+  const res = await fetch(`${API_URL}/api/public/cds?limit=${limit}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Falha ao listar CDs");
+  return res.json();
+}
+export async function fetchPublicCd(id: number): Promise<PublicCdDetail> {
+  const res = await fetch(`${API_URL}/api/public/cds/${id}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("CD não encontrado");
+  return res.json();
+}
+export function publicCoverUrl(id: number): string {
+  return `${API_URL}/api/public/cds/${id}/cover`;
+}
+export function previewUrl(trackId: number): string {
+  return `${API_URL}/api/public/preview/${trackId}`;
+}
 
 // ---------- Config do app (admin: credenciais Asaas) ----------
 export interface AppConfigView {

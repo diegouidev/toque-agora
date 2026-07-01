@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   type BillingStatus,
   type PublicPlan,
+  cancelSubscription,
   fetchBillingPlans,
   fetchBillingStatus,
   subscribe,
@@ -12,6 +13,14 @@ import { useAuth } from "../lib/auth-context";
 
 function brl(cents: number): string {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 export default function SubscribeView() {
@@ -51,15 +60,43 @@ export default function SubscribeView() {
   }
 
   const pending = status?.status === "pending" || status?.status === "overdue";
+  const active = status?.status === "active";
+
+  async function onCancel() {
+    if (!confirm("Cancelar sua assinatura? O acesso continua até o vencimento.")) return;
+    try {
+      setStatus(await cancelSubscription());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao cancelar");
+    }
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 py-6">
       <div className="text-center">
-        <h2 className="font-display text-2xl font-black sm:text-3xl">Escolha seu plano</h2>
+        <h2 className="font-display text-2xl font-black sm:text-3xl">
+          {active ? "Minha assinatura" : "Escolha seu plano"}
+        </h2>
         <p className="mt-1 text-sm text-zinc-400">
           Assine e libere o repertório na hora. Pagamento via PIX ou cartão.
         </p>
       </div>
+
+      {active && (
+        <div className="rounded-2xl border border-accent/40 bg-accent/10 p-5 text-center">
+          <p className="text-sm text-zinc-300">Plano ativo</p>
+          <p className="text-xl font-black text-accent">{status?.plan_name ?? "—"}</p>
+          <p className="mt-1 text-sm text-zinc-400">
+            Válido até <span className="font-semibold">{fmtDate(status?.expires_at ?? null)}</span>
+          </p>
+          <button
+            onClick={onCancel}
+            className="mt-4 rounded-full border border-white/15 px-5 py-2 text-xs font-medium text-zinc-300 hover:bg-white/10"
+          >
+            Cancelar assinatura
+          </button>
+        </div>
+      )}
 
       {pending && (
         <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-center text-sm">

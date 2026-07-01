@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .models import (
     Archive,
     Band,
+    Plan,
     PlaylistItem,
     PlaylistShare,
     Track,
@@ -41,6 +42,30 @@ async def plan_category_ids(session: AsyncSession, user: User) -> set[int]:
         )
     )
     return set(res.scalars().all())
+
+
+# ---------------- Vitrine pública ----------------
+async def public_category_ids(session: AsyncSession) -> set[int]:
+    """Categorias que pertencem a algum plano PAGO (price_cents > 0).
+
+    São elas que definem quais CDs entram na vitrine pública (sem login).
+    """
+    res = await session.execute(
+        select(plan_categories.c.category_id)
+        .join(Plan, Plan.id == plan_categories.c.plan_id)
+        .where(Plan.price_cents > 0)
+    )
+    return set(res.scalars().all())
+
+
+async def band_is_public(session: AsyncSession, band_id: int) -> bool:
+    """Todo CD do catálogo é público na vitrine (capa/tracklist/prévia de 30s).
+
+    A reprodução COMPLETA continua restrita a assinantes cujo plano cobre a
+    categoria do CD (ver can_access_band). Só admin/uploader cria CDs, então
+    todas as bandas são itens de catálogo.
+    """
+    return await session.get(Band, band_id) is not None
 
 
 async def _band_in_plan(session: AsyncSession, user: User, band_id: int) -> bool:

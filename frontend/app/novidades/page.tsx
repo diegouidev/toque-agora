@@ -1,0 +1,77 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { fetchPublicCds, publicCoverUrl, type PublicCd } from "../lib/api";
+import { MusicIcon } from "../components/icons";
+
+export default function NovidadesPage() {
+  const [cds, setCds] = useState<PublicCd[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchPublicCds(120)
+      .then(setCds)
+      .catch(() => setCds([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <main className="min-h-screen pb-16">
+      <header className="sticky top-0 z-20 border-b border-white/5 bg-base/80 px-4 py-3 backdrop-blur sm:px-6">
+        <div className="mx-auto flex max-w-5xl items-center justify-between">
+          <Link href="/" className="font-display text-lg font-black uppercase tracking-tight">
+            Toque <span className="text-accent">Agora</span>
+          </Link>
+          <Link
+            href="/"
+            className="rounded-full bg-accent px-4 py-1.5 text-xs font-bold text-black"
+          >
+            Assinar
+          </Link>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+        <h1 className="mb-4 font-display text-2xl font-black">Lançamentos e novidades</h1>
+
+        {loading ? (
+          <p className="py-16 text-center text-sm text-zinc-500">Carregando…</p>
+        ) : cds.length === 0 ? (
+          <p className="py-16 text-center text-sm text-zinc-500">
+            Nenhum CD disponível no momento.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {cds.map((cd) => (
+              <Link
+                key={cd.id}
+                href={`/cd/${cd.id}`}
+                className="group rounded-xl border border-white/5 bg-surface/60 p-3 transition-colors hover:bg-white/5"
+              >
+                <div className="relative mb-3 flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600">
+                  {cd.cover ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={publicCoverUrl(cd.id)}
+                      alt={cd.name}
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : (
+                    <MusicIcon className="h-10 w-10 text-white/80" />
+                  )}
+                </div>
+                <p className="truncate font-semibold" title={cd.name}>
+                  {cd.name}
+                </p>
+                <p className="truncate text-xs text-zinc-400">
+                  {cd.owner_name ?? "—"} · {cd.track_count} faixas
+                </p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}

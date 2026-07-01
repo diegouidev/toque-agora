@@ -77,6 +77,18 @@ async def create_subscription(
     return await _post(session, "/subscriptions", payload)
 
 
+async def delete_subscription(session: AsyncSession, subscription_id: str) -> None:
+    """Cancela (remove) a assinatura recorrente no Asaas — sem novas cobranças."""
+    async with await _client(session) as c:
+        try:
+            r = await c.delete(f"/subscriptions/{subscription_id}")
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"Falha ao falar com o Asaas: {exc}")
+    # 404 = já não existe no Asaas: tratamos como cancelado (idempotente).
+    if r.status_code >= 400 and r.status_code != 404:
+        raise HTTPException(status_code=502, detail=f"Asaas: {r.text[:300]}")
+
+
 async def first_invoice_url(session: AsyncSession, subscription_id: str) -> str | None:
     """URL da fatura da 1ª cobrança da assinatura (onde o cliente paga)."""
     data = await _get(session, f"/subscriptions/{subscription_id}/payments")

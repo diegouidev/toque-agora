@@ -6,6 +6,7 @@ import uuid
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from starlette.concurrency import run_in_threadpool
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..archive_service import (
@@ -18,7 +19,7 @@ from ..archive_service import (
 from ..auth import get_current_user, used_bytes_for
 from ..config import settings
 from ..database import get_session
-from ..models import Archive, Band, Track, User
+from ..models import Archive, Band, Category, Track, User
 from ..schemas import BandSummary, UploadComplete, UploadError, UploadResult
 
 router = APIRouter(prefix="/api", tags=["upload"])
@@ -62,6 +63,7 @@ def _require_upload(user: User) -> None:
 @router.post("/upload", response_model=UploadResult, status_code=201)
 async def upload_archives(
     files: list[UploadFile],
+    category_id: int | None = Form(default=None),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> UploadResult:
@@ -69,7 +71,8 @@ async def upload_archives(
 
     Cada subpasta de 1º nível do arquivo vira uma banda; MP3s na raiz viram
     uma banda com o nome do arquivo. Erros em um arquivo não impedem os demais.
-    Respeita a quota do usuário (soma dos arquivos no disco).
+    Respeita a quota do usuário (soma dos arquivos no disco). `category_id`
+    opcional já marca os CDs criados naquela categoria.
     """
     _require_upload(user)
     if not files:
@@ -82,7 +85,7 @@ async def upload_archives(
 
     for file in files:
         try:
-            bands = await _process_one(file, user, session)
+            bands = await _process_one(file, user, session, category_id)
             created_bands.extend(bands)
         except _QuotaExceeded as q:
             # Para o lote: o front mostra o modal de upgrade (WhatsApp).
@@ -214,7 +217,13 @@ async def upload_complete(
         raise HTTPException(status_code=500, detail=f"Falha ao finalizar: {exc}") from exc
 
     bands = await _index_archive(
-        stored_path, kind, body.filename, written, user, session
+        stored_path,
+        kind,
+        body.filename,
+        written,
+        user,
+        session,
+        category_ids=[body.category_id] if body.category_id else None,
     )
     return UploadResult(
         bands=[
@@ -243,7 +252,10 @@ async def upload_abort(
 
 
 async def _process_one(
-    file: UploadFile, user: User, session: AsyncSession
+    file: UploadFile,
+    user: User,
+    session: AsyncSession,
+    category_id: int | None = None,
 ) -> list[Band]:
     """Grava um arquivo em disco, indexa as bandas/faixas e persiste."""
     kind = kind_from_filename(file.filename or "")
@@ -278,7 +290,13 @@ async def _process_one(
         raise HTTPException(status_code=500, detail=f"Falha ao salvar: {exc}") from exc
 
     return await _index_archive(
-        stored_path, kind, file.filename or stored_name, written, user, session
+        stored_path,
+        kind,
+        file.filename or stored_name,
+        written,
+        user,
+        session,
+        category_ids=[category_id] if category_id else None,
     )
 
 
@@ -289,11 +307,13 @@ async def _index_archive(
     written: int,
     user: User,
     session: AsyncSession,
+    category_ids: list[int] | None = None,
 ) -> list[Band]:
     """Valida (magic), indexa bandas/faixas e persiste um arquivo já gravado.
 
     Compartilhado entre o upload direto e a finalização do upload em pedaços.
-    Em qualquer falha, remove o arquivo do disco e levanta HTTPException.
+    Se `category_ids` for informado, cada CD (banda) já nasce marcado com essas
+    categorias existentes. Em qualquer falha, remove o arquivo e levanta HTTPException.
     """
     # Confere os magic bytes: a extensão sozinha não garante o formato real.
     try:
@@ -336,6 +356,14 @@ async def _index_archive(
         posixpath.basename(original_filename or stored_name)
     )[0]
 
+    # Categorias a marcar em cada CD (ignora ids inexistentes).
+    cats: list[Category] = []
+    if category_ids:
+        cats_res = await session.execute(
+            select(Category).where(Category.id.in_(category_ids))
+        )
+        cats = list(cats_res.scalars().all())
+
     archive = Archive(
         owner_id=user.id,
         filename=original_filename or stored_name,
@@ -349,6 +377,8 @@ async def _index_archive(
             prefix=bm["prefix"],
             cover_name=bm.get("cover_name"),
         )
+        if cats:
+            band.categories = list(cats)
         band.tracks = [
             Track(
                 name=t["name"],

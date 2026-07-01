@@ -7,7 +7,7 @@ import ProfileModal from "./components/ProfileModal";
 import SubscribeView from "./components/SubscribeView";
 import BandCategories from "./components/BandCategories";
 import BandGrid from "./components/BandGrid";
-import LoginScreen from "./components/LoginScreen";
+import LandingView from "./components/LandingView";
 import MobileNav from "./components/MobileNav";
 import PlayerBar from "./components/PlayerBar";
 import PlaylistsBar from "./components/PlaylistsBar";
@@ -91,6 +91,8 @@ export default function Home() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  // Categoria a pré-marcar no upload (null = upload genérico).
+  const [uploadCategory, setUploadCategory] = useState<number | null>(null);
   const [showQueue, setShowQueue] = useState(false);
   const [quotaInfo, setQuotaInfo] = useState<QuotaExceeded | null>(null);
   const [addTrack, setAddTrack] = useState<Track | null>(null);
@@ -320,6 +322,12 @@ export default function Home() {
     setView(null);
   }
 
+  // Abre o modal de upload; catId != null já marca os CDs naquela categoria.
+  function openUpload(catId: number | null = null) {
+    setUploadCategory(catId);
+    openUpload();
+  }
+
   async function onDeleteBand(band: BandSummary) {
     if (
       !confirm(
@@ -483,7 +491,7 @@ export default function Home() {
       </main>
     );
   }
-  if (!me) return <LoginScreen />;
+  if (!me) return <LandingView />;
 
   const currentTrack = currentIndex != null ? queue[currentIndex] ?? null : null;
   const currentBand =
@@ -663,6 +671,15 @@ export default function Home() {
               {c.name}
             </button>
           ))}
+          {filterCategory !== null && me.can_upload && (
+            <button
+              onClick={() => openUpload(filterCategory)}
+              className="ml-auto flex items-center gap-1.5 rounded-full border border-accent/50 bg-accent/15 px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/25"
+            >
+              <UploadIcon className="h-3.5 w-3.5" />
+              Enviar para {categories.find((c) => c.id === filterCategory)?.name}
+            </button>
+          )}
         </div>
       )}
       {bands.length > 0 ? (
@@ -680,7 +697,7 @@ export default function Home() {
             <span className="font-mono">.zip</span> para começar.
           </p>
           <button
-            onClick={() => setShowUpload(true)}
+            onClick={() => openUpload()}
             className="mt-4 inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2 text-sm font-semibold text-black"
           >
             <UploadIcon className="h-4 w-4" /> Enviar coleção
@@ -754,7 +771,7 @@ export default function Home() {
         onShare={(pl) => setShareTarget(pl)}
         onCreate={onCreatePlaylist}
         onDelete={onDeletePlaylist}
-        onUpload={() => setShowUpload(true)}
+        onUpload={() => openUpload()}
         onAdmin={() => setShowAdmin(true)}
         onProfile={() => setShowProfile(true)}
         onLogout={logout}
@@ -769,7 +786,7 @@ export default function Home() {
           <div className="flex items-center gap-2">
             {me.can_upload && (
               <button
-                onClick={() => setShowUpload(true)}
+                onClick={() => openUpload()}
                 className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
               >
                 <UploadIcon className="h-3.5 w-3.5" /> Enviar
@@ -851,6 +868,12 @@ export default function Home() {
             setQuotaInfo(info);
           }}
           onClose={() => setShowUpload(false)}
+          categoryId={uploadCategory}
+          categoryName={
+            uploadCategory != null
+              ? categories.find((c) => c.id === uploadCategory)?.name ?? null
+              : null
+          }
         />
       )}
       {showQueue && (

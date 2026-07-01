@@ -8,10 +8,18 @@ interface Props {
   onUploaded: (result: UploadResult) => void;
   onQuotaExceeded?: (info: QuotaExceeded) => void;
   onClose: () => void;
+  categoryId?: number | null;
+  categoryName?: string | null;
 }
 
 /** Moldura de modal em volta do <Uploader> existente (acionado por botão). */
-export default function UploadModal({ onUploaded, onQuotaExceeded, onClose }: Props) {
+export default function UploadModal({
+  onUploaded,
+  onQuotaExceeded,
+  onClose,
+  categoryId,
+  categoryName,
+}: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm"
@@ -27,6 +35,14 @@ export default function UploadModal({ onUploaded, onQuotaExceeded, onClose }: Pr
             <p className="text-sm text-zinc-400">
               Cada subpasta dentro do arquivo vira uma banda
             </p>
+            {categoryName && (
+              <p className="mt-1 text-sm">
+                Categoria:{" "}
+                <span className="rounded-full bg-accent/20 px-2 py-0.5 text-xs font-semibold text-accent">
+                  {categoryName}
+                </span>
+              </p>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -37,7 +53,11 @@ export default function UploadModal({ onUploaded, onQuotaExceeded, onClose }: Pr
           </button>
         </div>
 
-        <Uploader onUploaded={onUploaded} onQuotaExceeded={onQuotaExceeded} />
+        <Uploader
+          onUploaded={onUploaded}
+          onQuotaExceeded={onQuotaExceeded}
+          categoryId={categoryId}
+        />
       </div>
     </div>
   );
