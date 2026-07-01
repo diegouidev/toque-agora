@@ -4,6 +4,7 @@ As credenciais vêm das configs dinâmicas (banco, editáveis pelo admin) com
 fallback no .env — ver app_settings.py.
 """
 
+import logging
 from datetime import date
 
 import httpx
@@ -11,6 +12,8 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .app_settings import get_config
+
+logger = logging.getLogger("asaas")
 
 
 class AsaasError(Exception):
@@ -37,8 +40,10 @@ async def _post(session: AsyncSession, path: str, payload: dict) -> dict:
         try:
             r = await c.post(path, json=payload)
         except httpx.HTTPError as exc:
+            logger.warning("Asaas POST %s falhou na conexão: %s", path, exc)
             raise HTTPException(status_code=502, detail=f"Falha ao falar com o Asaas: {exc}")
     if r.status_code >= 400:
+        logger.warning("Asaas POST %s -> %s: %s", path, r.status_code, r.text[:500])
         raise HTTPException(status_code=502, detail=f"Asaas: {r.text[:300]}")
     return r.json()
 
@@ -48,8 +53,10 @@ async def _get(session: AsyncSession, path: str) -> dict:
         try:
             r = await c.get(path)
         except httpx.HTTPError as exc:
+            logger.warning("Asaas GET %s falhou na conexão: %s", path, exc)
             raise HTTPException(status_code=502, detail=f"Falha ao falar com o Asaas: {exc}")
     if r.status_code >= 400:
+        logger.warning("Asaas GET %s -> %s: %s", path, r.status_code, r.text[:500])
         raise HTTPException(status_code=502, detail=f"Asaas: {r.text[:300]}")
     return r.json()
 

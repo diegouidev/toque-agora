@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import AddToPlaylistModal from "./components/AddToPlaylistModal";
-import AdminPanel from "./components/AdminPanel";
 import ProfileModal from "./components/ProfileModal";
 import SubscribeView from "./components/SubscribeView";
 import BandCategories from "./components/BandCategories";
@@ -89,7 +89,7 @@ export default function Home() {
   // Posição atual reportada pelo player (para persistir).
   const currentTimeRef = useState(() => ({ t: 0 }))[0];
 
-  const [showAdmin, setShowAdmin] = useState(false);
+  const router = useRouter();
   const [showProfile, setShowProfile] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   // Categoria a pré-marcar no upload (null = upload genérico).
@@ -807,7 +807,7 @@ export default function Home() {
         onCreate={onCreatePlaylist}
         onDelete={onDeletePlaylist}
         onUpload={() => openUpload()}
-        onAdmin={() => setShowAdmin(true)}
+        onAdmin={() => router.push("/admin")}
         onProfile={() => setShowProfile(true)}
         onLogout={logout}
       />
@@ -829,7 +829,7 @@ export default function Home() {
             )}
             {me.is_admin && (
               <button
-                onClick={() => setShowAdmin(true)}
+                onClick={() => router.push("/admin")}
                 className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
               >
                 Admin
@@ -933,7 +933,6 @@ export default function Home() {
           }}
         />
       )}
-      {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
       {quotaInfo && (
         <UpgradeModal info={quotaInfo} email={me.email} onClose={() => setQuotaInfo(null)} />

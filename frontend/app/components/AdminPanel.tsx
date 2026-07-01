@@ -42,7 +42,13 @@ function fmtDate(iso: string | null): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-export default function AdminPanel({ onClose }: { onClose: () => void }) {
+export default function AdminPanel({
+  onClose,
+  asPage = false,
+}: {
+  onClose: () => void;
+  asPage?: boolean;
+}) {
   const [data, setData] = useState<AdminOverview | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -216,17 +222,30 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-8 backdrop-blur-sm"
-      onClick={onClose}
+      className={
+        asPage
+          ? "min-h-screen w-full overflow-y-auto px-4 py-8"
+          : "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-8 backdrop-blur-sm"
+      }
+      onClick={asPage ? undefined : onClose}
     >
       <div
-        className="w-full max-w-2xl space-y-5 rounded-2xl border border-white/10 bg-surface p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        className={`w-full space-y-5 rounded-2xl border border-white/10 bg-surface p-6 shadow-2xl ${
+          asPage ? "mx-auto max-w-5xl" : "max-w-2xl"
+        }`}
+        onClick={asPage ? undefined : (e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">Painel do administrador</h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-white">
-            ✕
+          <button
+            onClick={onClose}
+            className={
+              asPage
+                ? "rounded-full bg-white/10 px-4 py-1.5 text-sm font-medium text-zinc-200 hover:bg-white/20"
+                : "text-zinc-400 hover:text-white"
+            }
+          >
+            {asPage ? "← Voltar ao app" : "✕"}
           </button>
         </div>
 
