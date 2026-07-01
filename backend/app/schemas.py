@@ -349,7 +349,25 @@ class TopBand(BaseModel):
     plays: int
 
 
+class AdminBilling(BaseModel):
+    """Métricas de vendas/assinaturas para o dashboard do admin."""
+
+    active_subscribers: int = 0
+    estimated_mrr_cents: int = 0  # receita mensal estimada (assinantes ativos)
+    top_plan_name: str | None = None
+    top_plan_count: int = 0
+
+
+class UsagePoint(BaseModel):
+    """Um ponto do gráfico de uso (reproduções por dia)."""
+
+    date: str  # YYYY-MM-DD
+    plays: int
+
+
 class AdminOverview(BaseModel):
     totals: AdminTotals
+    billing: AdminBilling = Field(default_factory=AdminBilling)
     users: list[AdminUserStat] = []
     top_bands: list[TopBand] = []
+    usage: list[UsagePoint] = []

@@ -343,7 +343,7 @@ export default function Home() {
   // Abre o modal de upload; catId != null já marca os CDs naquela categoria.
   function openUpload(catId: number | null = null) {
     setUploadCategory(catId);
-    openUpload();
+    setShowUpload(true);
   }
 
   async function onDeleteBand(band: BandSummary) {

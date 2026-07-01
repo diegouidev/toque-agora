@@ -436,10 +436,24 @@ export interface TopBand {
   plays: number;
 }
 
+export interface AdminBilling {
+  active_subscribers: number;
+  estimated_mrr_cents: number;
+  top_plan_name: string | null;
+  top_plan_count: number;
+}
+
+export interface UsagePoint {
+  date: string;
+  plays: number;
+}
+
 export interface AdminOverview {
   totals: AdminTotals;
+  billing: AdminBilling;
   users: AdminUserStat[];
   top_bands: TopBand[];
+  usage: UsagePoint[];
 }
 
 export async function fetchAdminOverview(): Promise<AdminOverview> {

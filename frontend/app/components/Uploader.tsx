@@ -1,5 +1,6 @@
 "use client";
 
+import JSZip from "jszip";
 import { useRef, useState } from "react";
 import {
   uploadAbortEndpoint,
@@ -8,6 +9,9 @@ import {
   type QuotaExceeded,
   type UploadResult,
 } from "../lib/api";
+
+// Arquivos que valem a pena zipar de uma pasta (o indexador só usa MP3 + capa).
+const FOLDER_KEEP = /\.(mp3|jpe?g|png|webp|gif)$/i;
 
 interface Props {
   onUploaded: (result: UploadResult) => void;
@@ -67,12 +71,55 @@ function parse413(text: string): UploadOneResult {
 
 export default function Uploader({ onUploaded, onQuotaExceeded, categoryId }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [items, setItems] = useState<FileProgress[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Progresso de compactação da pasta (antes de começar o upload).
+  const [zipping, setZipping] = useState<number | null>(null);
 
   function pickFiles() {
     inputRef.current?.click();
+  }
+
+  // Zipa uma pasta escolhida no navegador (STORE = sem recomprimir) e envia como
+  // .zip pelo MESMO fluxo chunked — herda progresso, quota, prévia e categoria.
+  async function zipFolder(files: FileList) {
+    setError(null);
+    const list = Array.from(files).filter((f) =>
+      FOLDER_KEEP.test(f.webkitRelativePath || f.name),
+    );
+    if (list.length === 0) {
+      setError("A pasta não tem MP3s.");
+      return;
+    }
+    // Nome da pasta de topo (vira o nome do arquivo/CD).
+    const topFolder =
+      (list[0].webkitRelativePath || "").split("/")[0] || "pasta";
+
+    const zip = new JSZip();
+    for (const f of list) {
+      const rel = f.webkitRelativePath || f.name;
+      // Remove o 1º segmento (pasta escolhida) para preservar a estrutura interna:
+      // subpastas viram bandas; MP3s na raiz viram um CD com o nome da pasta.
+      const inner = rel.split("/").slice(1).join("/") || f.name;
+      zip.file(inner, f);
+    }
+    try {
+      setZipping(0);
+      const blob = await zip.generateAsync(
+        { type: "blob", compression: "STORE" },
+        (meta) => setZipping(Math.round(meta.percent)),
+      );
+      setZipping(null);
+      const zipFile = new File([blob], `${topFolder}.zip`, {
+        type: "application/zip",
+      });
+      await upload([zipFile]);
+    } catch {
+      setZipping(null);
+      setError("Falha ao preparar a pasta.");
+    }
   }
 
   // Envia UM arquivo em pedaços (<100 MB cada) e finaliza com /complete.
@@ -154,7 +201,7 @@ export default function Uploader({ onUploaded, onQuotaExceeded, categoryId }: Pr
     void xhrPost(uploadAbortEndpoint(), form);
   }
 
-  async function upload(files: FileList) {
+  async function upload(files: FileList | File[]) {
     setError(null);
     const valid = Array.from(files).filter((f) => {
       const n = f.name.toLowerCase();
@@ -222,11 +269,10 @@ export default function Uploader({ onUploaded, onQuotaExceeded, categoryId }: Pr
         setDragging(false);
         if (e.dataTransfer.files?.length) upload(e.dataTransfer.files);
       }}
-      onClick={pickFiles}
-      className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+      className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
         dragging
           ? "border-accent bg-accent/10"
-          : "border-zinc-700 hover:border-zinc-500 hover:bg-white/5"
+          : "border-zinc-700"
       }`}
     >
       <input
@@ -240,16 +286,55 @@ export default function Uploader({ onUploaded, onQuotaExceeded, categoryId }: Pr
           e.target.value = "";
         }}
       />
+      {/* Input de pasta (webkitdirectory) — zipado no cliente antes de enviar. */}
+      <input
+        ref={folderRef}
+        type="file"
+        multiple
+        className="hidden"
+        // webkitdirectory/directory não estão nos tipos padrão do React.
+        {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+        onChange={(e) => {
+          if (e.target.files?.length) zipFolder(e.target.files);
+          e.target.value = "";
+        }}
+      />
 
-      {!items ? (
+      {zipping !== null ? (
+        <div className="w-full max-w-md space-y-2" onClick={(e) => e.stopPropagation()}>
+          <p className="text-sm font-medium">Preparando a pasta… {zipping}%</p>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
+            <div
+              className="h-full bg-accent transition-[width]"
+              style={{ width: `${zipping}%` }}
+            />
+          </div>
+        </div>
+      ) : !items ? (
         <>
           <div className="text-3xl">📦</div>
           <p className="font-medium">
-            Arraste um ou vários <span className="font-mono">.rar</span> ou{" "}
-            <span className="font-mono">.zip</span> aqui ou clique
+            Arraste <span className="font-mono">.rar</span>/<span className="font-mono">.zip</span>{" "}
+            aqui, ou escolha:
           </p>
-          <p className="text-sm text-zinc-400">
-            Cada subpasta dentro do arquivo vira uma banda na sua coleção
+          <div className="flex w-full max-w-md flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={pickFiles}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-bold text-black transition-transform hover:scale-[1.02]"
+            >
+              📦 Enviar arquivo
+            </button>
+            <button
+              type="button"
+              onClick={() => folderRef.current?.click()}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-white/10"
+            >
+              📁 Enviar pasta
+            </button>
+          </div>
+          <p className="text-xs text-zinc-500">
+            Cada subpasta vira uma banda. A pasta é compactada no navegador antes de enviar.
           </p>
         </>
       ) : (

@@ -48,6 +48,9 @@ function fmt(s: number): string {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
+// Duração (s) do fade-in/fade-out do crossfade.
+const CROSSFADE_SEC = 3;
+
 // Gradiente determinístico (capa "fake" da banda) — igual ao BandGrid.
 const GRADIENTS = [
   "from-rose-500 to-orange-500",
@@ -106,6 +109,9 @@ export default function PlayerBar({
   const [volume, setVolume] = useState(0.7);
   // Popover de volume (usado no mobile, onde o range não cabe inline).
   const [volMenu, setVolMenu] = useState(false);
+  // Crossfade: fade-out no fim da faixa + fade-in no começo da próxima.
+  // Default OFF (DVD ao vivo tem áudio contínuo — fade cortaria aplausos/fala).
+  const [crossfade, setCrossfade] = useState(false);
   // Sleep timer: horário-alvo (ms) ou "parar no fim da faixa".
   const [sleepUntil, setSleepUntil] = useState<number | null>(null);
   const [sleepEndOfTrack, setSleepEndOfTrack] = useState(false);
@@ -134,6 +140,24 @@ export default function PlayerBar({
       /* ignore */
     }
   }, [volume]);
+
+  // Carrega e persiste o crossfade.
+  useEffect(() => {
+    setCrossfade(localStorage.getItem("ta_crossfade") === "1");
+  }, []);
+  function toggleCrossfade() {
+    setCrossfade((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem("ta_crossfade", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      // Ao desligar, restaura o volume cheio imediatamente.
+      if (!next && audioRef.current) audioRef.current.volume = volume;
+      return next;
+    });
+  }
 
   // Sleep timer por minutos: agenda o pause e atualiza o "restam X min".
   useEffect(() => {
@@ -199,6 +223,8 @@ export default function PlayerBar({
     if (!audio || !track) return;
     audio.src = streamUrl(track.id);
     audio.load();
+    // Com crossfade, começa mudo (o onTimeUpdate faz o fade-in).
+    audio.volume = crossfade ? 0 : volume;
     const resume = pendingResume.current;
     pendingResume.current = null; // só vale para a 1ª faixa (restaurada)
     consumedResume.current = true;
@@ -298,8 +324,17 @@ export default function PlayerBar({
       <audio
         ref={audioRef}
         onTimeUpdate={(e) => {
-          const t = e.currentTarget.currentTime;
+          const audio = e.currentTarget;
+          const t = audio.currentTime;
           setCurrent(t);
+          // Crossfade: fade-in nos 1ºs segundos e fade-out nos últimos.
+          if (crossfade && audio.duration && isFinite(audio.duration)) {
+            const factor = Math.max(
+              0,
+              Math.min(1, t / CROSSFADE_SEC, (audio.duration - t) / CROSSFADE_SEC),
+            );
+            audio.volume = volume * factor;
+          }
           // Reporta a posição ao pai a cada ~5s (para salvar no localStorage).
           if (onTime && Math.abs(t - lastReported.current) >= 5) {
             lastReported.current = t;
@@ -544,6 +579,16 @@ export default function PlayerBar({
                   aria-label="Volume"
                 />
               </div>
+              <button
+                onClick={toggleCrossfade}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  crossfade ? "bg-accent text-black" : "bg-white/10 text-white/80"
+                }`}
+                aria-pressed={crossfade}
+                title="Crossfade (transição com fade entre faixas)"
+              >
+                Crossfade
+              </button>
               <div className="relative">
                 <button
                   onClick={() => setSleepMenu((m) => !m)}

@@ -32,6 +32,9 @@ function fmtBytes(b: number): string {
   if (b >= GB) return `${(b / GB).toFixed(1)} GB`;
   return `${(b / (1024 * 1024)).toFixed(0)} MB`;
 }
+function brl(cents: number): string {
+  return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 function fmtDate(iso: string | null): string {
   if (!iso) return "nunca";
   const d = new Date(iso);
@@ -207,6 +210,9 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
   }
 
   const totals = data?.totals;
+  const billing = data?.billing;
+  const usage = data?.usage ?? [];
+  const usageMax = Math.max(1, ...usage.map((p) => p.plays));
 
   return (
     <div
@@ -238,6 +244,59 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                 <p className="text-[11px] uppercase tracking-wide text-zinc-400">{c.label}</p>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Vendas / assinaturas */}
+        {billing && (
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+              Vendas
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl bg-black/30 p-3">
+                <p className="text-lg font-black text-accent">{billing.active_subscribers}</p>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-400">
+                  Assinantes ativos
+                </p>
+              </div>
+              <div className="rounded-xl bg-black/30 p-3">
+                <p className="text-lg font-black text-accent">
+                  {brl(billing.estimated_mrr_cents)}
+                </p>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-400">
+                  Receita estimada/mês
+                </p>
+              </div>
+              <div className="rounded-xl bg-black/30 p-3">
+                <p className="truncate text-lg font-black">
+                  {billing.top_plan_name ?? "—"}
+                </p>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-400">
+                  Plano mais vendido{" "}
+                  {billing.top_plan_count > 0 && `(${billing.top_plan_count})`}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Uso ao longo do tempo (reproduções/dia, últimos 30 dias) */}
+        {usage.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+              Uso (reproduções/dia — últimos 30 dias)
+            </p>
+            <div className="flex h-24 items-end gap-0.5 rounded-xl bg-black/30 p-3">
+              {usage.map((p) => (
+                <div
+                  key={p.date}
+                  title={`${p.date}: ${p.plays} reproduções`}
+                  style={{ height: `${Math.max(4, (p.plays / usageMax) * 100)}%` }}
+                  className="flex-1 rounded-t bg-accent/70 hover:bg-accent"
+                />
+              ))}
+            </div>
           </div>
         )}
 

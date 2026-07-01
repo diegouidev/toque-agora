@@ -1,22 +1,32 @@
-"""Painel do administrador: visão geral com estatísticas de uso."""
+"""Painel do administrador: visão geral com estatísticas de uso e vendas."""
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from fastapi import HTTPException
 
 from ..auth import require_admin, used_bytes_for
 from ..database import get_session
 from ..models import Archive, Band, PlayHistory, Plan, Playlist, PlaylistItem, Track, User
 from ..schemas import (
+    AdminBilling,
     AdminOverview,
     AdminTotals,
     AdminUserDetail,
     AdminUserStat,
     PlaylistSummary,
     TopBand,
+    UsagePoint,
 )
+
+
+def _plan_active_filter():
+    """Condição SQL: usuário com plano válido (não vencido)."""
+    now = datetime.now(timezone.utc)
+    return User.plan_id.isnot(None) & or_(
+        User.plan_expires_at.is_(None), User.plan_expires_at >= now
+    )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -119,7 +129,58 @@ async def overview(
         for bid, name, plays in top_res.all()
     ]
 
-    return AdminOverview(totals=totals, users=users, top_bands=top_bands)
+    # ----- Vendas / assinaturas -----
+    active_filter = _plan_active_filter()
+    active_subscribers = int(
+        await session.scalar(select(func.count(User.id)).where(active_filter)) or 0
+    )
+    estimated_mrr = int(
+        await session.scalar(
+            select(func.coalesce(func.sum(Plan.price_cents), 0))
+            .select_from(User)
+            .join(Plan, Plan.id == User.plan_id)
+            .where(active_filter)
+        )
+        or 0
+    )
+    top_plan_row = (
+        await session.execute(
+            select(Plan.name, func.count(User.id).label("c"))
+            .select_from(User)
+            .join(Plan, Plan.id == User.plan_id)
+            .where(active_filter)
+            .group_by(Plan.name)
+            .order_by(func.count(User.id).desc())
+            .limit(1)
+        )
+    ).first()
+    billing = AdminBilling(
+        active_subscribers=active_subscribers,
+        estimated_mrr_cents=estimated_mrr,
+        top_plan_name=top_plan_row[0] if top_plan_row else None,
+        top_plan_count=int(top_plan_row[1]) if top_plan_row else 0,
+    )
+
+    # ----- Uso ao longo do tempo (reproduções/dia, últimos 30 dias) -----
+    since = datetime.now(timezone.utc) - timedelta(days=30)
+    day = func.date(PlayHistory.played_at)
+    usage_res = await session.execute(
+        select(day.label("d"), func.count(PlayHistory.id).label("c"))
+        .where(PlayHistory.played_at >= since)
+        .group_by(day)
+        .order_by(day)
+    )
+    usage = [
+        UsagePoint(date=str(d), plays=int(c)) for d, c in usage_res.all()
+    ]
+
+    return AdminOverview(
+        totals=totals,
+        billing=billing,
+        users=users,
+        top_bands=top_bands,
+        usage=usage,
+    )
 
 
 @router.get("/users/{user_id}", response_model=AdminUserDetail)
