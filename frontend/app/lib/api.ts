@@ -649,11 +649,12 @@ export async function fetchBillingPlans(): Promise<PublicPlan[]> {
 }
 export async function subscribe(
   planId: number,
+  cpfCnpj?: string,
 ): Promise<{ invoice_url: string | null; status: string }> {
   const res = await apiFetch("/api/billing/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ plan_id: planId }),
+    body: JSON.stringify({ plan_id: planId, cpf_cnpj: cpfCnpj }),
   });
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));

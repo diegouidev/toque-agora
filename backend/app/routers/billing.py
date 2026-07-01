@@ -58,18 +58,53 @@ async def subscribe(
     if plan is None or plan.price_cents <= 0:
         raise HTTPException(status_code=404, detail="Plano não encontrado ou sem preço.")
 
-    # Garante o customer no Asaas.
-    if not user.asaas_customer_id:
-        cid = await asaas.create_customer(session, user.display_name or user.email, user.email)
-        user.asaas_customer_id = cid
+    # CPF/CNPJ (só dígitos) — o Asaas exige em produção. Usa o do corpo ou o salvo.
+    cpf = "".join(filter(str.isdigit, body.cpf_cnpj or "")) or user.cpf_cnpj
+    if not cpf or len(cpf) not in (11, 14):
+        raise HTTPException(
+            status_code=400,
+            detail="Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido para assinar.",
+        )
+    if cpf != user.cpf_cnpj:
+        user.cpf_cnpj = cpf
         await session.commit()
 
-    sub = await asaas.create_subscription(
-        session,
-        customer_id=user.asaas_customer_id,
-        value_reais=plan.price_cents / 100.0,
-        description=f"Assinatura {plan.name} - TOQUE AGORA",
-    )
+    async def _ensure_customer() -> str:
+        cid = await asaas.create_customer(
+            session, user.display_name or user.email, user.email, cpf
+        )
+        user.asaas_customer_id = cid
+        await session.commit()
+        return cid
+
+    # Garante o customer no Asaas.
+    if not user.asaas_customer_id:
+        await _ensure_customer()
+
+    value_reais = plan.price_cents / 100.0
+    description = f"Assinatura {plan.name} - TOQUE AGORA"
+    try:
+        sub = await asaas.create_subscription(
+            session,
+            customer_id=user.asaas_customer_id,
+            value_reais=value_reais,
+            description=description,
+        )
+    except HTTPException as exc:
+        # O customer salvo pode ter sido criado em outra conta/ambiente do Asaas
+        # (ex.: sandbox → produção, ou outro projeto) ou sem CPF. Recria e tenta 1x.
+        if user.asaas_customer_id and any(
+            code in str(exc.detail) for code in ("invalid_customer", "invalid_object")
+        ):
+            cid = await _ensure_customer()
+            sub = await asaas.create_subscription(
+                session,
+                customer_id=cid,
+                value_reais=value_reais,
+                description=description,
+            )
+        else:
+            raise
     asaas_sub_id = sub["id"]
 
     session.add(

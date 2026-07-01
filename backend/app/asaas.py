@@ -61,8 +61,14 @@ async def _get(session: AsyncSession, path: str) -> dict:
     return r.json()
 
 
-async def create_customer(session: AsyncSession, name: str, email: str) -> str:
-    data = await _post(session, "/customers", {"name": name or email, "email": email})
+async def create_customer(
+    session: AsyncSession, name: str, email: str, cpf_cnpj: str | None = None
+) -> str:
+    payload: dict = {"name": name or email, "email": email}
+    if cpf_cnpj:
+        # O Asaas exige CPF/CNPJ (só dígitos) para gerar cobranças em produção.
+        payload["cpfCnpj"] = cpf_cnpj
+    data = await _post(session, "/customers", payload)
     return data["id"]
 
 

@@ -116,6 +116,8 @@ class PublicPlan(BaseModel):
 
 class SubscribeIn(BaseModel):
     plan_id: int
+    # CPF/CNPJ do cliente (exigido pelo Asaas em produção). Aceita com máscara.
+    cpf_cnpj: str | None = None
 
 
 class SubscribeOut(BaseModel):

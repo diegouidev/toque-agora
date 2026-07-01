@@ -29,6 +29,7 @@ export default function SubscribeView() {
   const [status, setStatus] = useState<BillingStatus | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cpf, setCpf] = useState("");
 
   async function loadStatus() {
     try {
@@ -45,9 +46,14 @@ export default function SubscribeView() {
 
   async function onSubscribe(planId: number) {
     setError(null);
+    const digits = cpf.replace(/\D/g, "");
+    if (digits.length !== 11 && digits.length !== 14) {
+      setError("Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) para a cobrança.");
+      return;
+    }
     setBusyId(planId);
     try {
-      const res = await subscribe(planId);
+      const res = await subscribe(planId, digits);
       if (res.invoice_url) {
         window.open(res.invoice_url, "_blank", "noopener,noreferrer");
       }
@@ -112,6 +118,19 @@ export default function SubscribeView() {
           >
             Já paguei — atualizar
           </button>
+        </div>
+      )}
+
+      {!active && plans.length > 0 && (
+        <div className="mx-auto max-w-sm">
+          <label className="text-xs text-zinc-400">CPF ou CNPJ (para a cobrança)</label>
+          <input
+            value={cpf}
+            onChange={(e) => setCpf(e.target.value)}
+            inputMode="numeric"
+            placeholder="Somente números"
+            className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none focus:border-accent"
+          />
         </div>
       )}
 
