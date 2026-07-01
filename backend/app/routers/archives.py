@@ -15,7 +15,7 @@ from ..archive_service import (
 from ..auth import get_current_user
 from ..database import get_session
 from ..models import Archive, Band, Category, Favorite, Track, User
-from ..schemas import BandSummary, CategoryOut, NameUpdate, TrackOut
+from ..schemas import BandHidden, BandSummary, CategoryOut, NameUpdate, TrackOut
 
 router = APIRouter(prefix="/api", tags=["bands"])
 
@@ -71,6 +71,7 @@ async def list_bands(
             kind=kind,
             track_count=track_count,
             has_cover=band.cover_name is not None,
+            is_hidden=band.is_hidden,
             owner_id=owner_id,
             owner_name=(owner_name or owner_email),
             owner_has_avatar=owner_avatar is not None,
@@ -182,7 +183,22 @@ async def rename_band(
         kind=archive.kind if archive else "",
         track_count=int(count or 0),
         has_cover=band.cover_name is not None,
+        is_hidden=band.is_hidden,
     )
+
+
+@router.patch("/bands/{band_id}/hidden", status_code=204)
+async def set_band_hidden(
+    band_id: int,
+    body: BandHidden,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Oculta/exibe um CD na vitrine pública (dono ou admin)."""
+    band = await _band_owned_or_admin(band_id, user, session)
+    band.is_hidden = body.hidden
+    await session.commit()
+    return Response(status_code=204)
 
 
 @router.patch("/tracks/{track_id}", response_model=TrackOut)

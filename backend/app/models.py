@@ -173,6 +173,8 @@ class Band(Base):
     prefix: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     # Caminho interno da imagem de capa dentro do arquivo (None se não houver).
     cover_name: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # Oculto na vitrine pública (não aparece em /novidades, landing nem /cd/{id}).
+    is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

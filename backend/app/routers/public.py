@@ -52,6 +52,7 @@ async def public_cds(
         .join(Archive, Band.archive_id == Archive.id)
         .join(User, User.id == Archive.owner_id)
         .outerjoin(count_subq, Band.id == count_subq.c.band_id)
+        .where(Band.is_hidden.is_(False))
         .options(selectinload(Band.categories))
         .order_by(Archive.created_at.desc(), Band.name)
         .limit(limit)

@@ -63,9 +63,10 @@ async def band_is_public(session: AsyncSession, band_id: int) -> bool:
 
     A reprodução COMPLETA continua restrita a assinantes cujo plano cobre a
     categoria do CD (ver can_access_band). Só admin/uploader cria CDs, então
-    todas as bandas são itens de catálogo.
+    todas as bandas são itens de catálogo — exceto as marcadas como ocultas.
     """
-    return await session.get(Band, band_id) is not None
+    band = await session.get(Band, band_id)
+    return band is not None and not band.is_hidden
 
 
 async def _band_in_plan(session: AsyncSession, user: User, band_id: int) -> bool:

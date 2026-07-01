@@ -217,11 +217,16 @@ class BandSummary(BaseModel):
     kind: str
     track_count: int
     has_cover: bool = False
+    is_hidden: bool = False
     # Dono do CD (quem postou) — para o hero da view de banda.
     owner_id: int | None = None
     owner_name: str | None = None
     owner_has_avatar: bool = False
     categories: list["CategoryOut"] = []
+
+
+class BandHidden(BaseModel):
+    hidden: bool
 
 
 class CategoryOut(BaseModel):

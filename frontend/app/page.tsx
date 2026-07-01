@@ -37,6 +37,7 @@ import {
   removeFromPlaylist,
   renameBand,
   renameTrack,
+  setBandHidden,
   reorderPlaylist,
   setBandCategories,
   toggleFavorite,
@@ -263,6 +264,23 @@ export default function Home() {
       );
     } catch {
       alert("Falha ao renomear.");
+    }
+  }
+
+  async function onToggleHidden(band: BandSummary) {
+    const hidden = !band.is_hidden;
+    try {
+      await setBandHidden(band.id, hidden);
+      setBands((bs) =>
+        bs.map((b) => (b.id === band.id ? { ...b, is_hidden: hidden } : b)),
+      );
+      setView((v) =>
+        v && v.kind === "band" && v.band.id === band.id
+          ? { kind: "band", band: { ...v.band, is_hidden: hidden } }
+          : v,
+      );
+    } catch {
+      alert("Falha ao alterar a visibilidade.");
     }
   }
 
@@ -564,6 +582,23 @@ export default function Home() {
                 >
                   <EditIcon className="h-4 w-4" />
                 </button>
+                {(me.is_admin || view.band.owner_id === me.id) && (
+                  <button
+                    onClick={() => onToggleHidden(view.band)}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      view.band.is_hidden
+                        ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
+                        : "bg-white/10 text-zinc-300 hover:bg-white/20"
+                    }`}
+                    title={
+                      view.band.is_hidden
+                        ? "Oculto da vitrine pública — clique para exibir"
+                        : "Visível na vitrine pública — clique para ocultar"
+                    }
+                  >
+                    {view.band.is_hidden ? "Oculto" : "Na vitrine"}
+                  </button>
+                )}
               </div>
               {/* Perfil de quem postou */}
               {view.band.owner_name && (

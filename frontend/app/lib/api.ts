@@ -40,6 +40,7 @@ export interface BandSummary {
   kind: string; // "rar" | "zip"
   track_count: number;
   has_cover: boolean;
+  is_hidden?: boolean;
   owner_id: number | null;
   owner_name: string | null;
   owner_has_avatar: boolean;
@@ -562,6 +563,15 @@ export async function renameBand(bandId: number, name: string): Promise<BandSumm
   });
   if (!res.ok) throw new Error("Falha ao renomear banda");
   return res.json();
+}
+
+export async function setBandHidden(bandId: number, hidden: boolean): Promise<void> {
+  const res = await apiFetch(`/api/bands/${bandId}/hidden`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ hidden }),
+  });
+  if (!res.ok && res.status !== 204) throw new Error("Falha ao alterar visibilidade");
 }
 
 export async function renameTrack(trackId: number, name: string): Promise<Track> {
