@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..access import can_access_track
-from ..archive_service import ArchiveServiceError, extract_track_bytes
+from ..archive_service import ArchiveServiceError, extract_track_bytes_cached
 from ..auth import get_current_user
 from ..database import get_session
 from ..models import Archive, Band, Track, User
@@ -50,7 +50,7 @@ async def stream_track(
     # Roda em threadpool: a extração do .rar é IO/subprocesso bloqueante.
     try:
         data = await run_in_threadpool(
-            extract_track_bytes, archive.stored_path, archive.kind, track.name
+            extract_track_bytes_cached, archive.stored_path, archive.kind, track.name
         )
     except ArchiveServiceError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

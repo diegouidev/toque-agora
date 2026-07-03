@@ -1,6 +1,6 @@
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import (
@@ -9,6 +9,7 @@ from ..auth import (
     get_current_user,
     get_user_by_email,
     hash_password,
+    revoke_token,
     used_bytes_for,
     verify_password,
 )
@@ -27,9 +28,21 @@ _WINDOW_SECONDS = 5 * 60
 _attempts: dict[str, list[float]] = {}
 
 
+def _client_ip(request: Request) -> str:
+    """IP real do cliente.
+
+    Atrás do Caddy/Cloudflare, `request.client.host` é sempre o IP do proxy
+    (igual para todo mundo), o que tornaria o rate-limit por IP inútil. O Caddy
+    injeta o IP de origem em `X-Forwarded-For`; usamos o primeiro da lista.
+    """
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 def _rate_limit_key(request: Request, email: str) -> str:
-    ip = request.client.host if request.client else "unknown"
-    return f"{ip}:{email.lower()}"
+    return f"{_client_ip(request)}:{email.lower()}"
 
 
 def _check_rate_limit(key: str) -> None:
@@ -54,7 +67,9 @@ def _set_session_cookie(response: Response, token: str) -> None:
         max_age=settings.jwt_expire_hours * 3600,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        # Strict: o cookie não é enviado em requisições vindas de outros sites,
+        # bloqueando CSRF (um site malicioso não consegue agir em seu nome).
+        samesite="strict",
         path="/",
     )
 
@@ -119,7 +134,14 @@ async def register(
 
 
 @router.post("/logout", status_code=204)
-async def logout(response: Response) -> Response:
+async def logout(
+    response: Response,
+    session_cookie: str | None = Cookie(default=None, alias=COOKIE_NAME),
+) -> Response:
+    # Revoga o token no servidor (não basta apagar o cookie: uma cópia roubada
+    # do token continuaria válida até expirar).
+    if session_cookie:
+        revoke_token(session_cookie)
     response.delete_cookie(COOKIE_NAME, path="/")
     return Response(status_code=204)
 

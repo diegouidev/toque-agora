@@ -43,6 +43,18 @@ async def lifespan(app: FastAPI):
                 "JWT_SECRET inseguro em produção. Defina JWT_SECRET no .env "
                 "(ex.: openssl rand -hex 32) ou rode com DEBUG=true para desenvolvimento."
             )
+    # Segurança: a senha do super admin não pode ser fraca/default em produção.
+    if settings.admin_password_is_insecure:
+        if settings.debug:
+            logger.warning(
+                "ADMIN_PASSWORD fraca (default/curta). Troque antes de ir para produção "
+                "(mín. 10 caracteres, sem valores óbvios)."
+            )
+        else:
+            raise RuntimeError(
+                "ADMIN_PASSWORD fraca em produção. Defina uma senha forte no .env "
+                "(mín. 10 caracteres, sem valores óbvios) ou rode com DEBUG=true."
+            )
     # Cria as tabelas no startup (MVP, sem migrações).
     await init_db()
     yield

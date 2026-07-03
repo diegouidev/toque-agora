@@ -8,12 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..archive_service import content_type_for_image
-from ..auth import get_current_user, hash_password, verify_password
+from ..auth import create_token, get_current_user, hash_password, verify_password
 from ..config import settings
 from ..database import get_session
 from ..models import User
 from ..schemas import ChangePassword, MeUpdate, MeOut
-from .auth_router import _me_payload
+from .auth_router import _me_payload, _set_session_cookie
 
 router = APIRouter(prefix="/api", tags=["profile"])
 
@@ -60,7 +60,11 @@ async def change_password(
         raise HTTPException(status_code=400, detail="Senha atual incorreta.")
     user.password_hash = hash_password(body.new_password)
     await session.commit()
-    return Response(status_code=204)
+    # Trocar a senha derruba TODAS as sessões antigas (a impressão digital no
+    # token muda). Emitimos um cookie novo para ESTA sessão continuar logada.
+    response = Response(status_code=204)
+    _set_session_cookie(response, create_token(user))
+    return response
 
 
 @router.post("/me/avatar", response_model=MeOut)

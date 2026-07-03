@@ -47,14 +47,26 @@ async def init_db() -> None:
 
 
 async def _ensure_admin() -> None:
-    """Cria o super admin a partir do .env se ainda não existir."""
-    from .auth import get_user_by_email, hash_password
+    """Garante o super admin a partir do .env.
+
+    O `.env` é a fonte de verdade da senha do admin mestre: se a conta já existe
+    mas a senha do banco não corresponde ao ADMIN_PASSWORD atual, ela é
+    re-sincronizada no startup. Assim, trocar a senha no `.env` (ex.: corrigir uma
+    senha fraca) passa a valer no próximo boot, sem precisar mexer no banco.
+    """
+    from .auth import get_user_by_email, hash_password, verify_password
     from .config import settings
     from .models import User
 
     async with async_session_maker() as session:
         existing = await get_user_by_email(session, settings.admin_email)
         if existing is not None:
+            # Re-sincroniza a senha do admin com o .env se estiver diferente.
+            if not verify_password(settings.admin_password, existing.password_hash):
+                existing.password_hash = hash_password(settings.admin_password)
+                existing.is_active = True  # a conta mestre nunca fica bloqueada
+                existing.is_admin = True
+                await session.commit()
             return
         admin = User(
             email=settings.admin_email,

@@ -11,12 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
 
-from ..access import band_is_public
+from ..access import band_is_public, public_category_ids
 from ..archive_service import (
     ArchiveServiceError,
     content_type_for_image,
     extract_file_bytes,
-    extract_track_bytes,
+    extract_track_bytes_cached,
 )
 from ..database import get_session
 from ..models import Archive, Band, Category, Track, User
@@ -41,7 +41,12 @@ async def public_cds(
     category: int | None = None,
     session: AsyncSession = Depends(get_session),
 ) -> list[PublicCd]:
-    """Todos os CDs do catálogo, do mais novo ao mais antigo."""
+    """CDs do catálogo público (categorias de planos pagos), do mais novo ao mais antigo."""
+    # Só entram na vitrine CDs de categorias vendidas em algum plano pago.
+    public_cats = await public_category_ids(session)
+    if not public_cats:
+        return []
+
     count_subq = (
         select(Track.band_id, func.count(Track.id).label("c"))
         .group_by(Track.band_id)
@@ -53,11 +58,15 @@ async def public_cds(
         .join(User, User.id == Archive.owner_id)
         .outerjoin(count_subq, Band.id == count_subq.c.band_id)
         .where(Band.is_hidden.is_(False))
+        .where(Band.categories.any(Category.id.in_(public_cats)))
         .options(selectinload(Band.categories))
         .order_by(Archive.created_at.desc(), Band.name)
         .limit(limit)
     )
     if category is not None:
+        # Ignora filtro por categoria que não seja pública.
+        if category not in public_cats:
+            return []
         query = query.where(Band.categories.any(Category.id == category))
 
     rows = await session.execute(query)
@@ -156,7 +165,7 @@ async def public_preview(
 
     try:
         data = await run_in_threadpool(
-            extract_track_bytes, archive.stored_path, archive.kind, track.name
+            extract_track_bytes_cached, archive.stored_path, archive.kind, track.name
         )
     except ArchiveServiceError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

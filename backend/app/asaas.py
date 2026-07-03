@@ -20,6 +20,29 @@ class AsaasError(Exception):
     pass
 
 
+class AsaasApiError(HTTPException):
+    """Erro devolvido pela API do Asaas.
+
+    O corpo cru da resposta fica em `body` para uso INTERNO (logs e o self-heal
+    de customer inválido no billing). O cliente recebe só a mensagem genérica:
+    repassar a resposta do gateway vazaria detalhes da integração.
+    """
+
+    def __init__(self, body: str):
+        super().__init__(
+            status_code=502,
+            detail="Falha no gateway de pagamento. Tente novamente em instantes.",
+        )
+        self.body = body
+
+
+def _conn_error() -> HTTPException:
+    return HTTPException(
+        status_code=502,
+        detail="Não foi possível falar com o gateway de pagamento. Tente novamente.",
+    )
+
+
 async def _client(session: AsyncSession) -> httpx.AsyncClient:
     api_key = await get_config(session, "asaas_api_key")
     base_url = await get_config(session, "asaas_base_url")
@@ -41,10 +64,10 @@ async def _post(session: AsyncSession, path: str, payload: dict) -> dict:
             r = await c.post(path, json=payload)
         except httpx.HTTPError as exc:
             logger.warning("Asaas POST %s falhou na conexão: %s", path, exc)
-            raise HTTPException(status_code=502, detail=f"Falha ao falar com o Asaas: {exc}")
+            raise _conn_error() from exc
     if r.status_code >= 400:
         logger.warning("Asaas POST %s -> %s: %s", path, r.status_code, r.text[:500])
-        raise HTTPException(status_code=502, detail=f"Asaas: {r.text[:300]}")
+        raise AsaasApiError(r.text[:500])
     return r.json()
 
 
@@ -54,10 +77,10 @@ async def _get(session: AsyncSession, path: str) -> dict:
             r = await c.get(path)
         except httpx.HTTPError as exc:
             logger.warning("Asaas GET %s falhou na conexão: %s", path, exc)
-            raise HTTPException(status_code=502, detail=f"Falha ao falar com o Asaas: {exc}")
+            raise _conn_error() from exc
     if r.status_code >= 400:
         logger.warning("Asaas GET %s -> %s: %s", path, r.status_code, r.text[:500])
-        raise HTTPException(status_code=502, detail=f"Asaas: {r.text[:300]}")
+        raise AsaasApiError(r.text[:500])
     return r.json()
 
 
@@ -96,10 +119,12 @@ async def delete_subscription(session: AsyncSession, subscription_id: str) -> No
         try:
             r = await c.delete(f"/subscriptions/{subscription_id}")
         except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail=f"Falha ao falar com o Asaas: {exc}")
+            logger.warning("Asaas DELETE falhou na conexão: %s", exc)
+            raise _conn_error() from exc
     # 404 = já não existe no Asaas: tratamos como cancelado (idempotente).
     if r.status_code >= 400 and r.status_code != 404:
-        raise HTTPException(status_code=502, detail=f"Asaas: {r.text[:300]}")
+        logger.warning("Asaas DELETE -> %s: %s", r.status_code, r.text[:500])
+        raise AsaasApiError(r.text[:500])
 
 
 async def first_invoice_url(session: AsyncSession, subscription_id: str) -> str | None:

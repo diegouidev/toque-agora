@@ -69,6 +69,25 @@ class Settings(BaseSettings):
     def jwt_secret_is_insecure(self) -> bool:
         return self.jwt_secret in ("CHANGE_ME", "troque-este-segredo-em-producao", "")
 
+    @property
+    def admin_password_is_insecure(self) -> bool:
+        """Senha do super admin fraca/default — proibida em produção.
+
+        Cobre os defaults conhecidos, valores óbvios e senhas curtas demais.
+        A conta admin vê tudo (usuários, pagamentos), então é o alvo nº 1.
+        """
+        pw = self.admin_password or ""
+        weak_defaults = {
+            "admin123",
+            "admin",
+            "troque-esta-senha",
+            "troque-esta-senha-forte",
+            "changeme",
+            "password",
+            "senha123",
+        }
+        return pw.lower() in weak_defaults or len(pw) < 10
+
 
 @lru_cache
 def get_settings() -> Settings:

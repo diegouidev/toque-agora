@@ -1,5 +1,6 @@
 """Assinaturas (Asaas): planos públicos, assinar, status e webhook."""
 
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
@@ -10,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from .. import asaas
 from ..app_settings import get_config
 from ..auth import get_current_user
+from ..config import settings
 from ..database import get_session
 from ..models import Plan, Subscription, User
 from ..schemas import (
@@ -93,8 +95,10 @@ async def subscribe(
     except HTTPException as exc:
         # O customer salvo pode ter sido criado em outra conta/ambiente do Asaas
         # (ex.: sandbox → produção, ou outro projeto) ou sem CPF. Recria e tenta 1x.
+        # O corpo cru do erro fica em exc.body (AsaasApiError) — o detail é genérico.
         if user.asaas_customer_id and any(
-            code in str(exc.detail) for code in ("invalid_customer", "invalid_object")
+            code in getattr(exc, "body", "")
+            for code in ("invalid_customer", "invalid_object")
         ):
             cid = await _ensure_customer()
             sub = await asaas.create_subscription(
@@ -185,7 +189,17 @@ async def asaas_webhook(
     O Asaas envia o token no header 'asaas-access-token' (configurado no painel).
     """
     expected = await get_config(session, "asaas_webhook_token")
-    if expected and asaas_access_token != expected:
+    # "Fail closed": sem token configurado, o webhook fica ABERTO e qualquer um
+    # poderia forjar "pagamento confirmado" para liberar acesso pago. Em produção
+    # exigimos o token; só liberamos sem token em DEBUG (dev local).
+    if not expected:
+        if not settings.debug:
+            raise HTTPException(
+                status_code=503,
+                detail="Webhook não configurado (defina o token do Asaas no painel).",
+            )
+    elif not asaas_access_token or not secrets.compare_digest(asaas_access_token, expected):
+        # Comparação em tempo constante evita vazar o token por timing.
         raise HTTPException(status_code=401, detail="Token de webhook inválido.")
 
     body = await request.json()

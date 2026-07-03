@@ -59,14 +59,26 @@ async def public_category_ids(session: AsyncSession) -> set[int]:
 
 
 async def band_is_public(session: AsyncSession, band_id: int) -> bool:
-    """Todo CD do catálogo é público na vitrine (capa/tracklist/prévia de 30s).
+    """Um CD só é público na vitrine se pertence a alguma categoria de plano PAGO.
 
-    A reprodução COMPLETA continua restrita a assinantes cujo plano cobre a
-    categoria do CD (ver can_access_band). Só admin/uploader cria CDs, então
-    todas as bandas são itens de catálogo — exceto as marcadas como ocultas.
+    Isso evita que qualquer upload vaze para a vitrine (capa/tracklist/prévia de
+    30s) por engano: para aparecer publicamente, o CD precisa estar numa
+    categoria vendida em algum plano — e não estar marcado como oculto. A
+    reprodução COMPLETA continua restrita a assinantes (ver can_access_band).
     """
     band = await session.get(Band, band_id)
-    return band is not None and not band.is_hidden
+    if band is None or band.is_hidden:
+        return False
+    public_cats = await public_category_ids(session)
+    if not public_cats:
+        return False
+    stmt = select(
+        exists().where(
+            band_categories.c.band_id == band_id,
+            band_categories.c.category_id.in_(public_cats),
+        )
+    )
+    return bool(await session.scalar(stmt))
 
 
 async def _band_in_plan(session: AsyncSession, user: User, band_id: int) -> bool:

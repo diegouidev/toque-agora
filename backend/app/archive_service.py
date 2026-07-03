@@ -9,12 +9,18 @@ sem descompactar o arquivo inteiro no disco.
   (instalado no Dockerfile do back-end). A biblioteca autodetecta o backend.
 """
 
+import logging
 import os
 import posixpath
+import threading
+import time
 import zipfile
+from collections import OrderedDict
 from typing import Literal
 
 import rarfile
+
+logger = logging.getLogger("toqueagora.archive")
 
 Kind = Literal["rar", "zip"]
 
@@ -109,8 +115,12 @@ class _Entry:
 
 
 def _list_entries(stored_path: str, kind: Kind) -> list[_Entry]:
+    # Mensagens de erro NÃO incluem caminhos internos do servidor nem detalhes
+    # de exceção: elas chegam ao cliente via HTTPException(detail=str(exc)).
+    # O detalhe técnico vai para o log.
     if not os.path.exists(stored_path):
-        raise ArchiveServiceError(f"Arquivo não encontrado: {stored_path}")
+        logger.warning("Arquivo de origem ausente no disco: %s", stored_path)
+        raise ArchiveServiceError("Arquivo de origem não encontrado no armazenamento.")
 
     try:
         if kind == "zip":
@@ -126,7 +136,10 @@ def _list_entries(stored_path: str, kind: Kind) -> list[_Entry]:
                     for i in rf.infolist()
                 ]
     except (rarfile.Error, zipfile.BadZipFile) as exc:
-        raise ArchiveServiceError(f"Falha ao ler o arquivo: {exc}") from exc
+        logger.warning("Falha ao ler %s: %s", stored_path, exc)
+        raise ArchiveServiceError(
+            "Falha ao ler o arquivo (corrompido ou formato não suportado)."
+        ) from exc
 
 
 def list_bands_with_tracks(stored_path: str, kind: Kind) -> list[dict]:
@@ -236,6 +249,66 @@ def _read_limited(fh, declared_size: int | None) -> bytes:
     return data
 
 
+# ---------------- Cache de faixas extraídas ----------------
+# Cada requisição de streaming (e cada seek/Range) extrai a faixa inteira para a
+# RAM. Sem cache, arrastar a barra de progresso re-extrai o arquivo repetidas
+# vezes; com vários ouvintes simultâneos isso vira pressão de memória/CPU e um
+# vetor de DoS. Um cache pequeno, com TTL e teto de tamanho total, faz os
+# acessos seguidos à mesma faixa reaproveitarem o buffer já extraído.
+_CACHE_TTL_SECONDS = 30
+_CACHE_MAX_TOTAL_BYTES = 256 * 1024 * 1024  # teto de memória do cache (~256 MiB)
+_cache: "OrderedDict[tuple[str, str], tuple[float, bytes]]" = OrderedDict()
+_cache_lock = threading.Lock()
+_cache_total = 0
+
+
+def _cache_get(key: tuple[str, str]) -> bytes | None:
+    global _cache_total
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry is None:
+            return None
+        ts, data = entry
+        if time.monotonic() - ts > _CACHE_TTL_SECONDS:
+            del _cache[key]
+            _cache_total -= len(data)
+            return None
+        _cache.move_to_end(key)  # LRU: recém-usado vai para o fim
+        return data
+
+
+def _cache_put(key: tuple[str, str], data: bytes) -> None:
+    global _cache_total
+    # Não cacheia faixas grandes demais (não vale o custo de memória).
+    if len(data) > _CACHE_MAX_TOTAL_BYTES // 2:
+        return
+    with _cache_lock:
+        if key in _cache:
+            _cache_total -= len(_cache[key][1])
+        _cache[key] = (time.monotonic(), data)
+        _cache.move_to_end(key)
+        _cache_total += len(data)
+        # Evicção LRU até caber no teto total.
+        while _cache_total > _CACHE_MAX_TOTAL_BYTES and _cache:
+            _, (_, old) = _cache.popitem(last=False)
+            _cache_total -= len(old)
+
+
+def extract_track_bytes_cached(stored_path: str, kind: Kind, internal_name: str) -> bytes:
+    """Como extract_track_bytes, mas reaproveita o buffer por alguns segundos.
+
+    Ideal para o streaming: seeks (HTTP Range) repetidos na mesma faixa não
+    re-extraem o arquivo inteiro toda vez.
+    """
+    key = (stored_path, internal_name)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+    data = extract_track_bytes(stored_path, kind, internal_name)
+    _cache_put(key, data)
+    return data
+
+
 def extract_track_bytes(stored_path: str, kind: Kind, internal_name: str) -> bytes:
     """Extrai *apenas* a faixa indicada para um buffer em memória.
 
@@ -244,7 +317,8 @@ def extract_track_bytes(stored_path: str, kind: Kind, internal_name: str) -> byt
     é feito depois fatiando o buffer em RAM — sem recompressão nem disco.
     """
     if not os.path.exists(stored_path):
-        raise ArchiveServiceError(f"Arquivo não encontrado: {stored_path}")
+        logger.warning("Arquivo de origem ausente no disco: %s", stored_path)
+        raise ArchiveServiceError("Arquivo de origem não encontrado no armazenamento.")
 
     try:
         if kind == "zip":
@@ -262,8 +336,7 @@ def extract_track_bytes(stored_path: str, kind: Kind, internal_name: str) -> byt
                 with rf.open(internal_name) as fh:
                     return _read_limited(fh, getattr(info, "file_size", None))
     except KeyError as exc:
-        raise ArchiveServiceError(
-            f"Faixa '{internal_name}' não existe no arquivo."
-        ) from exc
+        raise ArchiveServiceError("Faixa não existe no arquivo.") from exc
     except (rarfile.Error, zipfile.BadZipFile) as exc:
-        raise ArchiveServiceError(f"Falha ao extrair a faixa: {exc}") from exc
+        logger.warning("Falha ao extrair '%s' de %s: %s", internal_name, stored_path, exc)
+        raise ArchiveServiceError("Falha ao extrair a faixa do arquivo.") from exc

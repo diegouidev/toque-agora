@@ -1,3 +1,4 @@
+import logging
 import os
 import posixpath
 import re
@@ -23,6 +24,8 @@ from ..models import Archive, Band, Category, Track, User
 from ..schemas import BandSummary, UploadComplete, UploadError, UploadResult
 
 router = APIRouter(prefix="/api", tags=["upload"])
+
+logger = logging.getLogger("toqueagora.upload")
 
 _CHUNK = 1024 * 1024  # 1 MiB por chunk ao gravar em disco
 _GB = 1024 * 1024 * 1024
@@ -123,11 +126,15 @@ async def upload_archives(
 # pequenas; o servidor anexa cada parte ao mesmo .part e finaliza no /complete.
 
 
-def _part_path(upload_id: str) -> str:
-    """Caminho do arquivo temporário do upload, validando o id (anti traversal)."""
+def _part_path(upload_id: str, user: User) -> str:
+    """Caminho do arquivo temporário do upload, validando o id (anti traversal).
+
+    O nome é prefixado com o id do DONO: cada usuário só enxerga/afeta os
+    próprios uploads em andamento (sem colisão nem abort de upload alheio).
+    """
     if not _UPLOAD_ID_RE.fullmatch(upload_id):
         raise HTTPException(status_code=400, detail="upload_id inválido.")
-    return os.path.join(settings.data_dir, f"{upload_id}.part")
+    return os.path.join(settings.data_dir, f"u{user.id}_{upload_id}.part")
 
 
 @router.post("/upload/chunk", status_code=204)
@@ -146,7 +153,7 @@ async def upload_chunk(
     """
     _require_upload(user)
     os.makedirs(settings.data_dir, exist_ok=True)
-    part_path = _part_path(upload_id)
+    part_path = _part_path(upload_id, user)
 
     used = await used_bytes_for(session, user.id)
     remaining = max(0, user.quota_bytes - used)
@@ -175,7 +182,12 @@ async def upload_chunk(
         raise
     except Exception as exc:
         _safe_remove(part_path)
-        raise HTTPException(status_code=500, detail=f"Falha ao salvar: {exc}") from exc
+        # Loga o detalhe internamente; o cliente recebe mensagem genérica
+        # (detalhes de exceção ajudam um atacante a mapear o sistema).
+        logger.exception("Falha ao gravar chunk de upload: %s", exc)
+        raise HTTPException(
+            status_code=500, detail="Falha ao salvar o arquivo. Tente novamente."
+        ) from exc
 
     return Response(status_code=204)
 
@@ -188,7 +200,7 @@ async def upload_complete(
 ) -> UploadResult:
     """Finaliza: promove o .part a arquivo definitivo e indexa as bandas."""
     _require_upload(user)
-    part_path = _part_path(body.upload_id)
+    part_path = _part_path(body.upload_id, user)
     if not os.path.exists(part_path):
         raise HTTPException(status_code=404, detail="Upload não encontrado ou expirado.")
 
@@ -214,7 +226,10 @@ async def upload_complete(
         os.rename(part_path, stored_path)
     except OSError as exc:
         _safe_remove(part_path)
-        raise HTTPException(status_code=500, detail=f"Falha ao finalizar: {exc}") from exc
+        logger.exception("Falha ao finalizar upload em pedaços: %s", exc)
+        raise HTTPException(
+            status_code=500, detail="Falha ao finalizar o upload. Tente novamente."
+        ) from exc
 
     bands = await _index_archive(
         stored_path,
@@ -246,8 +261,8 @@ async def upload_abort(
     upload_id: str = Form(...),
     user: User = Depends(get_current_user),
 ) -> Response:
-    """Cancela um upload em andamento removendo o arquivo temporário."""
-    _safe_remove(_part_path(upload_id))
+    """Cancela um upload em andamento removendo o arquivo temporário (só o dono)."""
+    _safe_remove(_part_path(upload_id, user))
     return Response(status_code=204)
 
 
@@ -287,7 +302,10 @@ async def _process_one(
         raise
     except Exception as exc:
         _safe_remove(stored_path)
-        raise HTTPException(status_code=500, detail=f"Falha ao salvar: {exc}") from exc
+        logger.exception("Falha ao gravar upload direto: %s", exc)
+        raise HTTPException(
+            status_code=500, detail="Falha ao salvar o arquivo. Tente novamente."
+        ) from exc
 
     return await _index_archive(
         stored_path,
