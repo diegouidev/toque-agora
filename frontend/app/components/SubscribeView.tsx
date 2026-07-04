@@ -72,6 +72,30 @@ export default function SubscribeView() {
   const pending = status?.status === "pending" || status?.status === "overdue";
   const active = status?.status === "active";
 
+  // Confirmação automática: enquanto o pagamento estiver pendente, checamos o
+  // status a cada 8s (até ~2min). Assim que confirmar, libera o acesso sozinho,
+  // sem o usuário precisar clicar em "Já paguei".
+  useEffect(() => {
+    if (!pending) return;
+    let tries = 0;
+    const id = setInterval(async () => {
+      tries += 1;
+      try {
+        const s = await fetchBillingStatus();
+        setStatus(s);
+        if (s.status === "active") {
+          clearInterval(id);
+          await refresh();
+          toast.success("Pagamento confirmado! Acesso liberado 🎉");
+        }
+      } catch {
+        /* ignora; tenta de novo no próximo tick */
+      }
+      if (tries >= 15) clearInterval(id);
+    }, 8000);
+    return () => clearInterval(id);
+  }, [pending, refresh, toast]);
+
   async function onCancel() {
     const ok = await dialog.confirm({
       title: "Cancelar sua assinatura?",

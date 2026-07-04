@@ -2,7 +2,15 @@
 
 import { useRef, useState } from "react";
 import type { Track } from "../lib/api";
-import { DragIcon, EditIcon, HeartIcon, PlayIcon, PlusIcon, QueueIcon } from "./icons";
+import {
+  DownloadIcon,
+  DragIcon,
+  EditIcon,
+  HeartIcon,
+  PlayIcon,
+  PlusIcon,
+  QueueIcon,
+} from "./icons";
 
 interface Props {
   tracks: Track[];
@@ -15,6 +23,7 @@ interface Props {
   onRename?: (track: Track) => void; // renomear (dono/admin)
   onRemove?: (track: Track) => void; // contexto de playlist
   onReorder?: (newOrder: Track[]) => void; // habilita drag-and-drop (playlist)
+  onDownload?: (track: Track) => void; // baixar MP3 (dono/admin)
 }
 
 function fmtDuration(sec: number): string {
@@ -35,6 +44,7 @@ export default function TrackList({
   onRename,
   onRemove,
   onReorder,
+  onDownload,
 }: Props) {
   // Drag-and-drop com Pointer Events (funciona no MOUSE e no TOQUE — o HTML5
   // drag nativo não dispara em telas de toque). Estado para o visual; refs para
@@ -193,6 +203,21 @@ export default function TrackList({
                   title="Adicionar a playlist"
                 >
                   <PlusIcon className="h-4 w-4" />
+                </button>
+              )}
+
+              {/* Baixar MP3 (dono/admin) */}
+              {onDownload && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDownload(track);
+                  }}
+                  className="shrink-0 p-1 text-zinc-500 opacity-0 transition hover:text-white group-hover:opacity-100"
+                  aria-label="Baixar faixa"
+                  title="Baixar MP3"
+                >
+                  <DownloadIcon className="h-4 w-4" />
                 </button>
               )}
 

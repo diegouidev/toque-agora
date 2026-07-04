@@ -190,6 +190,10 @@ export function streamUrl(trackId: number): string {
   return `${API_URL}/api/stream/${trackId}`;
 }
 
+export function downloadUrl(trackId: number): string {
+  return `${API_URL}/api/download/${trackId}`;
+}
+
 export function coverUrl(bandId: number): string {
   return `${API_URL}/api/bands/${bandId}/cover`;
 }
@@ -652,6 +656,35 @@ export function recordPlay(trackId: number): void {
   apiFetch(`/api/history/${trackId}`, { method: "POST", keepalive: true }).catch(
     () => {},
   );
+}
+
+// ---------- Retrospectiva pessoal ("Wrapped") ----------
+export interface StatItem {
+  id: number | null;
+  label: string;
+  sublabel: string | null;
+  plays: number;
+}
+export interface MeStats {
+  total_plays: number;
+  total_minutes: number;
+  unique_tracks: number;
+  since: string | null;
+  top_tracks: StatItem[];
+  top_bands: StatItem[];
+  top_categories: StatItem[];
+}
+export async function fetchMyStats(): Promise<MeStats> {
+  const res = await apiFetch("/api/me/stats");
+  if (!res.ok) throw new Error("Falha ao carregar a retrospectiva");
+  return res.json();
+}
+
+// ---------- Rádio (fila embaralhada por categoria) ----------
+export async function fetchRadio(category: number, limit = 50): Promise<Track[]> {
+  const res = await apiFetch(`/api/radio?category=${category}&limit=${limit}`);
+  if (!res.ok) throw new Error("Falha ao iniciar o rádio");
+  return res.json();
 }
 
 // ---------- Upload com progresso (XHR) ----------

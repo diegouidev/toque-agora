@@ -35,6 +35,7 @@ interface Props {
   onUpload: () => void;
   onAdmin: () => void;
   onProfile: () => void;
+  onStats?: () => void;
   onLogout: () => void;
 }
 
@@ -63,6 +64,7 @@ export default function Sidebar({
   onUpload,
   onAdmin,
   onProfile,
+  onStats,
   onLogout,
 }: Props) {
   const [creating, setCreating] = useState(false);
@@ -266,6 +268,14 @@ export default function Sidebar({
           </span>
         </button>
         <QuotaBar me={me} />
+        {onStats && (
+          <button
+            onClick={onStats}
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
+          >
+            📊 Minha retrospectiva
+          </button>
+        )}
         <div className="flex items-center gap-2">
           {me.is_admin && (
             <button

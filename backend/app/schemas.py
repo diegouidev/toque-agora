@@ -375,3 +375,23 @@ class AdminOverview(BaseModel):
     users: list[AdminUserStat] = []
     top_bands: list[TopBand] = []
     usage: list[UsagePoint] = []
+
+
+# ---------------- Retrospectiva do usuário ("Wrapped") ----------------
+class StatItem(BaseModel):
+    """Um item de ranking pessoal (faixa, banda ou categoria mais tocada)."""
+
+    id: int | None = None
+    label: str
+    sublabel: str | None = None
+    plays: int
+
+
+class MeStats(BaseModel):
+    total_plays: int = 0
+    total_minutes: int = 0
+    unique_tracks: int = 0
+    since: datetime | None = None
+    top_tracks: list[StatItem] = []
+    top_bands: list[StatItem] = []
+    top_categories: list[StatItem] = []

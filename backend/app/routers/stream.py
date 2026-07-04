@@ -123,3 +123,51 @@ def _iter_bytes(data: bytes, start: int, stop: int):
         chunk = data[pos : min(pos + _CHUNK, stop)]
         pos += len(chunk)
         yield chunk
+
+
+def _safe_filename(name: str) -> str:
+    """Nome de arquivo seguro para o Content-Disposition (ASCII simples)."""
+    base = "".join(c for c in name if c.isalnum() or c in " -_().").strip()
+    return (base or "faixa")[:120] + ".mp3"
+
+
+@router.get("/download/{track_id}")
+async def download_track(
+    track_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Baixa o MP3 da faixa como anexo.
+
+    Restrito ao DONO do arquivo (ou admin): não liberamos download para ouvintes
+    com plano — o catálogo pago é só para streaming (evita cópia em massa).
+    """
+    track = await session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(status_code=404, detail="Faixa não encontrada.")
+    band = await session.get(Band, track.band_id)
+    archive = await session.get(Archive, band.archive_id) if band else None
+    if archive is None:
+        raise HTTPException(status_code=404, detail="Arquivo de origem não encontrado.")
+    if not user.is_admin and archive.owner_id != user.id:
+        raise HTTPException(
+            status_code=403, detail="Download disponível apenas para o dono."
+        )
+
+    try:
+        data = await run_in_threadpool(
+            extract_track_bytes, archive.stored_path, archive.kind, track.name
+        )
+    except ArchiveServiceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    filename = _safe_filename(track.display_name)
+    return Response(
+        content=data,
+        media_type="audio/mpeg",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(data)),
+            "Cache-Control": "no-store",
+        },
+    )

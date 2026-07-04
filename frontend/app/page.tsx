@@ -15,6 +15,7 @@ import PlaylistsBar from "./components/PlaylistsBar";
 import QueuePanel from "./components/QueuePanel";
 import SearchView from "./components/SearchView";
 import ShareModal from "./components/ShareModal";
+import StatsModal from "./components/StatsModal";
 import Sidebar, { type Tab } from "./components/Sidebar";
 import TrackList from "./components/TrackList";
 import UploadModal from "./components/UploadModal";
@@ -27,7 +28,9 @@ import {
   createPlaylist,
   deleteArchive,
   deletePlaylist,
+  downloadUrl,
   fetchBands,
+  fetchRadio,
   fetchBandTracks,
   fetchCategories,
   fetchFavorites,
@@ -98,6 +101,7 @@ export default function Home() {
 
   const router = useRouter();
   const [showProfile, setShowProfile] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   // Categoria a pré-marcar no upload (null = upload genérico).
   const [uploadCategory, setUploadCategory] = useState<number | null>(null);
@@ -337,6 +341,34 @@ export default function Home() {
   async function playFrom(open: () => Promise<Track[]>) {
     const t = await open();
     if (t.length > 0) startQueue(t, 0);
+  }
+
+  // Rádio: fila embaralhada de um gênero (fecha a view de detalhe).
+  async function startRadio(categoryId: number) {
+    try {
+      const tracks = await fetchRadio(categoryId);
+      if (tracks.length === 0) {
+        toast.info("Nenhuma faixa disponível nesse gênero ainda.");
+        return;
+      }
+      setView(null);
+      setShuffle(true);
+      startQueue(tracks, 0);
+      const catName = categories.find((c) => c.id === categoryId)?.name;
+      toast.success(catName ? `Rádio ${catName} no ar 📻` : "Rádio no ar 📻");
+    } catch {
+      toast.error("Não foi possível iniciar o rádio.");
+    }
+  }
+
+  // Download (só faixas do próprio acervo / admin — o backend também valida).
+  function onDownloadTrack(track: Track) {
+    const a = document.createElement("a");
+    a.href = downloadUrl(track.id);
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   // Clique numa faixa da view em exibição.
@@ -759,6 +791,11 @@ export default function Home() {
           onReorder={
             view.kind === "playlist" && !readOnly ? onReorderPlaylist : undefined
           }
+          onDownload={
+            me.is_admin || (view.kind === "band" && view.band.owner_id === me.id)
+              ? onDownloadTrack
+              : undefined
+          }
         />
       </div>
     </section>
@@ -790,10 +827,19 @@ export default function Home() {
               {c.name}
             </button>
           ))}
+          {filterCategory !== null && (
+            <button
+              onClick={() => startRadio(filterCategory)}
+              className="ml-auto flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+              title="Tocar um rádio embaralhado deste gênero"
+            >
+              <PlayIcon className="h-3.5 w-3.5" /> Rádio
+            </button>
+          )}
           {filterCategory !== null && me.can_upload && (
             <button
               onClick={() => openUpload(filterCategory)}
-              className="ml-auto flex items-center gap-1.5 rounded-full border border-accent/50 bg-accent/15 px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/25"
+              className="flex items-center gap-1.5 rounded-full border border-accent/50 bg-accent/15 px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/25"
             >
               <UploadIcon className="h-3.5 w-3.5" />
               Enviar para {categories.find((c) => c.id === filterCategory)?.name}
@@ -913,6 +959,7 @@ export default function Home() {
         onUpload={() => openUpload()}
         onAdmin={() => router.push("/admin")}
         onProfile={() => setShowProfile(true)}
+        onStats={() => setShowStats(true)}
         onLogout={logout}
       />
 
@@ -939,6 +986,13 @@ export default function Home() {
                 Admin
               </button>
             )}
+            <button
+              onClick={() => setShowStats(true)}
+              className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
+              title="Minha retrospectiva"
+            >
+              📊
+            </button>
             <button
               onClick={() => setShowProfile(true)}
               className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-accent to-indigo-600 text-[10px] font-black"
@@ -1059,6 +1113,7 @@ export default function Home() {
         />
       )}
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
+      {showStats && <StatsModal onClose={() => setShowStats(false)} />}
       {quotaInfo && (
         <UpgradeModal info={quotaInfo} email={me.email} onClose={() => setQuotaInfo(null)} />
       )}
