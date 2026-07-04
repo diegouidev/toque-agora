@@ -3,11 +3,13 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from ..access import plan_category_ids
 from ..auth import get_current_user
 from ..database import get_session
-from ..models import Archive, Band, Favorite, Track, User
-from ..schemas import BandSummary, SearchResult, TrackOut
+from ..models import Archive, Band, Category, Favorite, Track, User
+from ..schemas import BandSummary, CategoryOut, SearchResult, TrackOut
 
 router = APIRouter(prefix="/api", tags=["search"])
 
@@ -18,17 +20,33 @@ _LIMIT = 40
 @router.get("/search", response_model=SearchResult)
 async def search(
     q: str = Query(default="", max_length=255),
+    category: int | None = None,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> SearchResult:
     """Filtra bandas (por nome) e faixas (por display_name) que casam com `q`.
 
-    Não-admin só enxerga o próprio acervo. Termo curto (<2) retorna vazio.
+    Não-admin enxerga o próprio acervo E os CDs liberados pelo plano (mesma
+    regra de /api/bands). `category` opcional restringe a um gênero. Termo
+    curto (<2) retorna vazio.
     """
     term = q.strip()
     if len(term) < 2:
         return SearchResult(bands=[], tracks=[])
     like = f"%{term}%"
+
+    # Filtro de posse comum às duas queries: dono OU (não-admin) CDs do plano.
+    plan_cat_ids = set() if user.is_admin else await plan_category_ids(session, user)
+
+    def _apply_scope(query):
+        if user.is_admin:
+            return query
+        if plan_cat_ids:
+            return query.where(
+                (Archive.owner_id == user.id)
+                | (Band.categories.any(Category.id.in_(plan_cat_ids)))
+            )
+        return query.where(Archive.owner_id == user.id)
 
     # ---- Bandas: mesmo formato de /api/bands (kind + contagem de faixas) ----
     count_subq = (
@@ -41,11 +59,13 @@ async def search(
         .join(Archive, Band.archive_id == Archive.id)
         .outerjoin(count_subq, Band.id == count_subq.c.band_id)
         .where(Band.name.ilike(like))
+        .options(selectinload(Band.categories))
         .order_by(Archive.created_at.desc(), Band.name)
         .limit(_LIMIT)
     )
-    if not user.is_admin:
-        bands_query = bands_query.where(Archive.owner_id == user.id)
+    bands_query = _apply_scope(bands_query)
+    if category is not None:
+        bands_query = bands_query.where(Band.categories.any(Category.id == category))
     bands_res = await session.execute(bands_query)
     bands = [
         BandSummary(
@@ -55,6 +75,10 @@ async def search(
             kind=kind,
             track_count=track_count,
             has_cover=band.cover_name is not None,
+            is_hidden=band.is_hidden,
+            categories=[
+                CategoryOut(id=c.id, name=c.name, slug=c.slug) for c in band.categories
+            ],
         )
         for band, kind, track_count in bands_res.all()
     ]
@@ -68,8 +92,9 @@ async def search(
         .order_by(Track.display_name)
         .limit(_LIMIT)
     )
-    if not user.is_admin:
-        tracks_query = tracks_query.where(Archive.owner_id == user.id)
+    tracks_query = _apply_scope(tracks_query)
+    if category is not None:
+        tracks_query = tracks_query.where(Band.categories.any(Category.id == category))
     tracks_res = await session.execute(tracks_query)
     tracks = list(tracks_res.scalars().all())
 

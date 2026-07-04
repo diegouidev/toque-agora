@@ -86,11 +86,31 @@ async def list_bands(
 async def _band_owned_or_admin(
     band_id: int, user: User, session: AsyncSession
 ) -> Band:
+    """LEITURA da banda (faixas/capa): dono, admin, plano ou compartilhamento."""
     band = await session.get(Band, band_id)
     if band is None:
         raise HTTPException(status_code=404, detail="Banda não encontrada.")
     # Acesso: dono, admin, plano (ouvinte) ou playlist compartilhada.
     if not await can_access_band(session, user, band_id):
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    return band
+
+
+async def _require_band_owner(
+    band_id: int, user: User, session: AsyncSession
+) -> Band:
+    """ESCRITA da banda (renomear/ocultar): só o dono do arquivo ou o admin.
+
+    Diferente da leitura, ter o CD liberado pelo plano ou via compartilhamento
+    NÃO dá direito de editar — senão um ouvinte poderia renomear CDs alheios.
+    """
+    band = await session.get(Band, band_id)
+    if band is None:
+        raise HTTPException(status_code=404, detail="Banda não encontrada.")
+    if user.is_admin:
+        return band
+    archive = await session.get(Archive, band.archive_id)
+    if archive is None or archive.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Acesso negado.")
     return band
 
@@ -169,7 +189,7 @@ async def rename_band(
     session: AsyncSession = Depends(get_session),
 ) -> BandSummary:
     """Renomeia o nome exibido de uma banda (dono ou admin)."""
-    band = await _band_owned_or_admin(band_id, user, session)
+    band = await _require_band_owner(band_id, user, session)
     band.name = body.name.strip()
     await session.commit()
     count = await session.scalar(
@@ -195,7 +215,7 @@ async def set_band_hidden(
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     """Oculta/exibe um CD na vitrine pública (dono ou admin)."""
-    band = await _band_owned_or_admin(band_id, user, session)
+    band = await _require_band_owner(band_id, user, session)
     band.is_hidden = body.hidden
     await session.commit()
     return Response(status_code=204)
@@ -212,7 +232,7 @@ async def rename_track(
     track = await session.get(Track, track_id)
     if track is None:
         raise HTTPException(status_code=404, detail="Faixa não encontrada.")
-    await _band_owned_or_admin(track.band_id, user, session)
+    await _require_band_owner(track.band_id, user, session)
     track.display_name = body.name.strip()
     await session.commit()
     fav = await session.scalar(

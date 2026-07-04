@@ -93,6 +93,7 @@ export interface Me {
   is_admin: boolean;
   can_upload: boolean;
   plan_name: string | null;
+  plan_expires_at: string | null;
   quota_bytes: number;
   used_bytes: number;
   quota_gb: number;
@@ -215,6 +216,18 @@ export async function createCategory(name: string): Promise<Category> {
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
     throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao criar categoria");
+  }
+  return res.json();
+}
+export async function renameCategory(id: number, name: string): Promise<Category> {
+  const res = await apiFetch(`/api/categories/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao renomear categoria");
   }
   return res.json();
 }
@@ -604,8 +617,12 @@ export interface SearchResult {
   tracks: Track[];
 }
 
-export async function searchAll(q: string): Promise<SearchResult> {
-  const res = await apiFetch(`/api/search?q=${encodeURIComponent(q)}`);
+export async function searchAll(
+  q: string,
+  category?: number | null,
+): Promise<SearchResult> {
+  const cat = category != null ? `&category=${category}` : "";
+  const res = await apiFetch(`/api/search?q=${encodeURIComponent(q)}${cat}`);
   if (!res.ok) throw new Error("Falha na busca");
   return res.json();
 }
@@ -695,8 +712,12 @@ export interface PublicCdDetail extends PublicCd {
   tracks: PublicTrack[];
 }
 
-export async function fetchPublicCds(limit = 60): Promise<PublicCd[]> {
-  const res = await fetch(`${API_URL}/api/public/cds?limit=${limit}`, {
+export async function fetchPublicCds(
+  limit = 60,
+  category?: number | null,
+): Promise<PublicCd[]> {
+  const cat = category != null ? `&category=${category}` : "";
+  const res = await fetch(`${API_URL}/api/public/cds?limit=${limit}${cat}`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error("Falha ao listar CDs");

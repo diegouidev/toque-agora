@@ -23,6 +23,8 @@ class MeOut(BaseModel):
     is_admin: bool
     can_upload: bool = True
     plan_name: str | None = None
+    # Vencimento da assinatura (para o aviso "vence em X dias"); None = sem plano/expiração.
+    plan_expires_at: datetime | None = None
     quota_bytes: int
     used_bytes: int
     quota_gb: float

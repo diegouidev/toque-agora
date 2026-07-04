@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchPublicCds, publicCoverUrl, type PublicCd } from "../lib/api";
 import { MusicIcon } from "../components/icons";
 
 export default function NovidadesPage() {
   const [cds, setCds] = useState<PublicCd[]>([]);
   const [loading, setLoading] = useState(true);
+  const [genre, setGenre] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPublicCds(120)
@@ -15,6 +16,17 @@ export default function NovidadesPage() {
       .catch(() => setCds([]))
       .finally(() => setLoading(false));
   }, []);
+
+  // Gêneros disponíveis = união das categorias dos CDs carregados (ordenados).
+  const genres = useMemo(() => {
+    const set = new Set<string>();
+    for (const cd of cds) for (const c of cd.category_names) set.add(c);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [cds]);
+
+  const shown = genre
+    ? cds.filter((cd) => cd.category_names.includes(genre))
+    : cds;
 
   return (
     <main className="min-h-screen pb-16">
@@ -35,15 +47,42 @@ export default function NovidadesPage() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
         <h1 className="mb-4 font-display text-2xl font-black">Lançamentos e novidades</h1>
 
+        {/* Filtro por gênero */}
+        {genres.length > 0 && (
+          <div className="mb-5 flex flex-wrap gap-2">
+            <button
+              onClick={() => setGenre(null)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                genre === null ? "bg-accent text-black" : "bg-white/10 hover:bg-white/20"
+              }`}
+            >
+              Todos
+            </button>
+            {genres.map((g) => (
+              <button
+                key={g}
+                onClick={() => setGenre(g)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  genre === g ? "bg-accent text-black" : "bg-white/10 hover:bg-white/20"
+                }`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           <p className="py-16 text-center text-sm text-zinc-500">Carregando…</p>
-        ) : cds.length === 0 ? (
+        ) : shown.length === 0 ? (
           <p className="py-16 text-center text-sm text-zinc-500">
-            Nenhum CD disponível no momento.
+            {cds.length === 0
+              ? "Nenhum CD disponível no momento."
+              : "Nenhum CD neste gênero."}
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {cds.map((cd) => (
+            {shown.map((cd) => (
               <Link
                 key={cd.id}
                 href={`/cd/${cd.id}`}

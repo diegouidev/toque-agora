@@ -49,6 +49,7 @@ import {
   type UploadResult,
 } from "./lib/api";
 import { useAuth } from "./lib/auth-context";
+import { totalDurationLabel } from "./lib/format";
 import {
   clearPlayerState,
   loadPlayerState,
@@ -535,6 +536,15 @@ export default function Home() {
         ? `pl:${view.playlist.id}`
         : null;
 
+  // Aviso de vencimento da assinatura: mostra um banner quando falta ≤ 7 dias
+  // (ou já venceu). Só para quem tem plano com data de expiração.
+  const expiryDays = me.plan_expires_at
+    ? Math.ceil(
+        (new Date(me.plan_expires_at).getTime() - Date.now()) / 86_400_000,
+      )
+    : null;
+  const showExpiryWarning = expiryDays != null && expiryDays <= 7;
+
   // Playlist compartilhada comigo é somente leitura (não sou o dono).
   const readOnly = view?.kind === "playlist" && view.readOnly === true;
   const sharedOwner =
@@ -616,7 +626,12 @@ export default function Home() {
                   </span>
                 </div>
               )}
-              <p className="mt-1 text-xs text-zinc-400">{viewTracks.length} faixas</p>
+              <p className="mt-1 text-xs text-zinc-400">
+                {viewTracks.length} faixas
+                {totalDurationLabel(viewTracks) && (
+                  <span> · {totalDurationLabel(viewTracks)}</span>
+                )}
+              </p>
               <BandCategories
                 bandId={view.band.id}
                 current={view.band.categories}
@@ -647,6 +662,9 @@ export default function Home() {
             <h3 className="truncate text-lg font-bold">{viewTitle}</h3>
             <p className="text-xs text-zinc-400">
               {viewTracks.length} faixas
+              {totalDurationLabel(viewTracks) && (
+                <span> · {totalDurationLabel(viewTracks)}</span>
+              )}
               {sharedOwner && <span> · compartilhada por {sharedOwner}</span>}
             </p>
           </div>
@@ -756,6 +774,7 @@ export default function Home() {
         onPlayTracks={(list, i) => startQueue(list, i)}
         currentTrackId={currentTrack?.id ?? null}
         isPlaying={isPlaying}
+        categories={categories}
         onToggleFavorite={onToggleFav}
         onAddToPlaylist={(t) => setAddTrack(t)}
       />
@@ -861,6 +880,24 @@ export default function Home() {
         </header>
 
         <div className="mx-auto max-w-5xl space-y-7 px-4 py-6 sm:px-6">
+          {showExpiryWarning && (
+            <button
+              onClick={() => onTab("subscribe")}
+              className="flex w-full items-center gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-left text-sm transition-colors hover:bg-amber-500/15"
+            >
+              <span className="text-lg">⏳</span>
+              <span className="flex-1 text-amber-200">
+                {expiryDays! < 0
+                  ? "Sua assinatura venceu. Renove para continuar ouvindo."
+                  : expiryDays === 0
+                    ? "Sua assinatura vence hoje. Renove para não perder o acesso."
+                    : `Sua assinatura vence em ${expiryDays} ${expiryDays === 1 ? "dia" : "dias"}. Renove para não perder o acesso.`}
+              </span>
+              <span className="shrink-0 rounded-full bg-amber-400 px-3 py-1 text-xs font-bold text-black">
+                Renovar
+              </span>
+            </button>
+          )}
           {view ? detail : tabContent}
         </div>
       </main>

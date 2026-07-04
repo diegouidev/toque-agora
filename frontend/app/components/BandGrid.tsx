@@ -108,6 +108,23 @@ export default function BandGrid({
               {b.name}
             </p>
             <p className="text-xs text-zinc-400">{b.track_count} faixas</p>
+            {b.categories && b.categories.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {b.categories.slice(0, 2).map((c) => (
+                  <span
+                    key={c.id}
+                    className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-zinc-300"
+                  >
+                    {c.name}
+                  </span>
+                ))}
+                {b.categories.length > 2 && (
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+                    +{b.categories.length - 2}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         );
       })}

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..access import can_access_track
 from ..auth import get_current_user, get_user_by_email
 from ..database import get_session
 from ..models import (
@@ -27,16 +28,18 @@ from ..schemas import (
 router = APIRouter(prefix="/api", tags=["playlists"])
 
 
-async def _track_owned(track_id: int, user: User, session: AsyncSession) -> Track:
-    """Garante que a faixa pertence ao usuário (ou admin) e a retorna."""
+async def _track_accessible(track_id: int, user: User, session: AsyncSession) -> Track:
+    """Garante que o usuário pode acessar a faixa e a retorna.
+
+    Aceita dono, admin, ouvinte cujo plano cobre o CD, ou destinatário de uma
+    playlist compartilhada — o mesmo critério do streaming (can_access_track).
+    Assim, um assinante pode curtir/adicionar à playlist as faixas que ouve.
+    """
     track = await session.get(Track, track_id)
     if track is None:
         raise HTTPException(status_code=404, detail="Faixa não encontrada.")
-    if not user.is_admin:
-        band = await session.get(Band, track.band_id)
-        archive = await session.get(Archive, band.archive_id) if band else None
-        if archive is None or archive.owner_id != user.id:
-            raise HTTPException(status_code=403, detail="Acesso negado.")
+    if not await can_access_track(session, user, track):
+        raise HTTPException(status_code=403, detail="Acesso negado.")
     return track
 
 
@@ -67,7 +70,7 @@ async def add_favorite(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    await _track_owned(track_id, user, session)
+    await _track_accessible(track_id, user, session)
     exists = await session.execute(
         select(Favorite).where(
             Favorite.owner_id == user.id, Favorite.track_id == track_id
@@ -298,7 +301,7 @@ async def add_to_playlist(
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     await _owned_playlist(playlist_id, user, session)
-    await _track_owned(body.track_id, user, session)
+    await _track_accessible(body.track_id, user, session)
     # Próxima posição (fim da lista).
     res = await session.execute(
         select(func.coalesce(func.max(PlaylistItem.position), -1)).where(

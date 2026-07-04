@@ -168,6 +168,7 @@ async def _me_payload(user: User, session: AsyncSession) -> MeOut:
         is_admin=user.is_admin,
         can_upload=user.can_upload,
         plan_name=plan_name,
+        plan_expires_at=user.plan_expires_at,
         quota_bytes=user.quota_bytes,
         used_bytes=used,
         quota_gb=round(user.quota_bytes / _GB, 2),

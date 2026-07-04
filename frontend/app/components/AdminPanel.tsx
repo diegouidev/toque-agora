@@ -12,6 +12,7 @@ import {
   createCategory,
   createUser,
   deleteCategory,
+  renameCategory,
   deleteUser,
   fetchAdminOverview,
   fetchAdminUser,
@@ -82,6 +83,16 @@ export default function AdminPanel({
     if (!confirm(`Excluir a categoria "${c.name}"? Os CDs perdem essa marcação.`)) return;
     await deleteCategory(c.id);
     loadCats();
+  }
+  async function editCat(c: Category) {
+    const name = prompt("Novo nome da categoria:", c.name);
+    if (name == null || !name.trim() || name.trim() === c.name) return;
+    try {
+      await renameCategory(c.id, name.trim());
+      loadCats();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Falha ao renomear categoria");
+    }
   }
 
   async function loadPlans() {
@@ -332,9 +343,18 @@ export default function AdminPanel({
               >
                 {c.name}
                 <button
+                  onClick={() => editCat(c)}
+                  className="text-zinc-400 hover:text-white"
+                  aria-label={`Renomear ${c.name}`}
+                  title="Renomear categoria"
+                >
+                  ✎
+                </button>
+                <button
                   onClick={() => removeCat(c)}
                   className="text-zinc-400 hover:text-red-400"
                   aria-label={`Excluir ${c.name}`}
+                  title="Excluir categoria"
                 >
                   ✕
                 </button>
