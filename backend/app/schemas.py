@@ -222,6 +222,8 @@ class BandSummary(BaseModel):
     track_count: int
     has_cover: bool = False
     is_hidden: bool = False
+    # CD curtido pelo usuário (favorito de CD inteiro).
+    is_favorite: bool = False
     # Dono do CD (quem postou) — para o hero da view de banda.
     owner_id: int | None = None
     owner_name: str | None = None
@@ -395,3 +397,8 @@ class MeStats(BaseModel):
     top_tracks: list[StatItem] = []
     top_bands: list[StatItem] = []
     top_categories: list[StatItem] = []
+
+
+# ---------------- Novidades (CDs novos desde a última visita) ----------------
+class NewsCount(BaseModel):
+    count: int = 0

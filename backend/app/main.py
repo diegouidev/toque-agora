@@ -12,7 +12,9 @@ from .routers import (
     auth_router,
     billing,
     categories,
+    cd_favorites,
     history,
+    news,
     plans,
     playlists,
     profile,
@@ -100,6 +102,8 @@ app.include_router(search.router)
 app.include_router(history.router)
 app.include_router(stats.router)
 app.include_router(radio.router)
+app.include_router(cd_favorites.router)
+app.include_router(news.router)
 app.include_router(public.router)
 app.include_router(stream.router)
 

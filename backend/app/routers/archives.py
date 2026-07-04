@@ -14,8 +14,16 @@ from ..archive_service import (
 )
 from ..auth import get_current_user
 from ..database import get_session
-from ..models import Archive, Band, Category, Favorite, Track, User
+from ..models import Archive, Band, BandFavorite, Category, Favorite, Track, User
 from ..schemas import BandHidden, BandSummary, CategoryOut, NameUpdate, TrackOut
+
+
+async def _fav_band_ids(session: AsyncSession, user_id: int) -> set[int]:
+    """CDs (bandas) curtidos por um usuário — para o flag is_favorite."""
+    res = await session.execute(
+        select(BandFavorite.band_id).where(BandFavorite.owner_id == user_id)
+    )
+    return set(res.scalars().all())
 
 router = APIRouter(prefix="/api", tags=["bands"])
 
@@ -63,6 +71,7 @@ async def list_bands(
         query = query.where(Band.categories.any(Category.id == category))
 
     result = await session.execute(query)
+    fav_ids = await _fav_band_ids(session, user.id)
     return [
         BandSummary(
             id=band.id,
@@ -72,6 +81,7 @@ async def list_bands(
             track_count=track_count,
             has_cover=band.cover_name is not None,
             is_hidden=band.is_hidden,
+            is_favorite=band.id in fav_ids,
             owner_id=owner_id,
             owner_name=(owner_name or owner_email),
             owner_has_avatar=owner_avatar is not None,

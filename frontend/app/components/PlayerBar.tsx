@@ -360,6 +360,15 @@ export default function PlayerBar({
         }}
         onPause={() => onTime?.(audioRef.current?.currentTime ?? 0)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onCanPlay={(e) => {
+          // Rede da correção do "rádio não inicia sozinho": ao trocar a fila
+          // (ex.: iniciar um rádio), o play() disparado logo após o load() pode
+          // acontecer antes do áudio estar pronto. Quando o áudio fica pronto
+          // (canplay) e a intenção é tocar, garantimos o play aqui.
+          if (isPlaying && e.currentTarget.paused) {
+            e.currentTarget.play().catch(() => {});
+          }
+        }}
         onEnded={handleEnded}
         preload="metadata"
       />

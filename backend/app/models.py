@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -80,6 +81,10 @@ class User(Base):
     asaas_customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # CPF/CNPJ do cliente (só dígitos) — exigido pelo Asaas em produção.
     cpf_cnpj: Mapped[str | None] = mapped_column(String(14), nullable=True)
+    # Última vez que o usuário viu as novidades (para o badge de CDs novos).
+    news_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -271,6 +276,26 @@ class Favorite(Base):
     )
 
     track: Mapped["Track"] = relationship()
+
+
+class BandFavorite(Base):
+    """CD (banda) curtido por um usuário — separado do favorito por faixa."""
+
+    __tablename__ = "band_favorites"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "band_id", name="uq_band_favorite"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    band_id: Mapped[int] = mapped_column(
+        ForeignKey("bands.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class PlaylistShare(Base):

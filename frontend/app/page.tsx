@@ -20,7 +20,7 @@ import Sidebar, { type Tab } from "./components/Sidebar";
 import TrackList from "./components/TrackList";
 import UploadModal from "./components/UploadModal";
 import UpgradeModal from "./components/UpgradeModal";
-import { EditIcon, MusicIcon, PlayIcon, UploadIcon } from "./components/icons";
+import { EditIcon, HeartIcon, MusicIcon, PlayIcon, UploadIcon } from "./components/icons";
 import {
   addToPlaylist,
   avatarUrl,
@@ -30,7 +30,11 @@ import {
   deletePlaylist,
   downloadUrl,
   fetchBands,
+  fetchFavoriteCds,
+  fetchNews,
   fetchRadio,
+  markNewsSeen,
+  toggleCdFavorite,
   fetchBandTracks,
   fetchCategories,
   fetchFavorites,
@@ -81,7 +85,10 @@ export default function Home() {
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [sharedPlaylists, setSharedPlaylists] = useState<PlaylistSummary[]>([]);
   const [favCount, setFavCount] = useState(0);
+  const [favCds, setFavCds] = useState<BandSummary[]>([]);
   const [recent, setRecent] = useState<BandSummary[]>([]);
+  const [newsBands, setNewsBands] = useState<BandSummary[]>([]);
+  const [newsSeen, setNewsSeen] = useState(false);
 
   const [tab, setTab] = useState<Tab>("home");
   const [view, setView] = useState<View>(null);
@@ -157,6 +164,20 @@ export default function Home() {
       /* ignore */
     }
   }, []);
+  const loadFavCds = useCallback(async () => {
+    try {
+      setFavCds(await fetchFavoriteCds());
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const loadNews = useCallback(async () => {
+    try {
+      setNewsBands(await fetchNews());
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     if (me) {
@@ -166,8 +187,28 @@ export default function Home() {
       loadFavCount();
       loadRecent();
       loadShared();
+      loadFavCds();
+      loadNews();
     }
-  }, [me, loadBands, loadCategories, loadPlaylists, loadFavCount, loadRecent, loadShared]);
+  }, [
+    me,
+    loadBands,
+    loadCategories,
+    loadPlaylists,
+    loadFavCount,
+    loadRecent,
+    loadShared,
+    loadFavCds,
+    loadNews,
+  ]);
+
+  // Ao entrar na home com novidades, marca como vistas (limpa o badge na próxima).
+  useEffect(() => {
+    if (tab === "home" && newsBands.length > 0 && !newsSeen) {
+      setNewsSeen(true);
+      markNewsSeen();
+    }
+  }, [tab, newsBands, newsSeen]);
 
   // Restaura a fila/posição salva ao abrir (uma vez, com play PAUSADO).
   useEffect(() => {
@@ -290,6 +331,34 @@ export default function Home() {
       toast.success("Banda renomeada.");
     } catch {
       toast.error("Falha ao renomear a banda.");
+    }
+  }
+
+  async function onToggleBandFav(band: BandSummary) {
+    const nowFav = !band.is_favorite;
+    // Otimista: atualiza grade, recentes, novidades e a view aberta.
+    const patch = (b: BandSummary) =>
+      b.id === band.id ? { ...b, is_favorite: nowFav } : b;
+    setBands((bs) => bs.map(patch));
+    setRecent((bs) => bs.map(patch));
+    setNewsBands((bs) => bs.map(patch));
+    setView((v) =>
+      v && v.kind === "band" && v.band.id === band.id
+        ? { kind: "band", band: { ...v.band, is_favorite: nowFav } }
+        : v,
+    );
+    try {
+      await toggleCdFavorite(band.id, nowFav);
+      loadFavCds();
+      toast.success(nowFav ? "CD adicionado aos curtidos." : "CD removido dos curtidos.");
+    } catch {
+      // Reverte.
+      const undo = (b: BandSummary) =>
+        b.id === band.id ? { ...b, is_favorite: !nowFav } : b;
+      setBands((bs) => bs.map(undo));
+      setRecent((bs) => bs.map(undo));
+      setNewsBands((bs) => bs.map(undo));
+      toast.error("Não foi possível atualizar os CDs curtidos.");
     }
   }
 
@@ -737,13 +806,28 @@ export default function Home() {
                 isAdmin={me.is_admin}
                 onChange={(cats) => onBandCategoriesChange(view.band.id, cats)}
               />
-              <button
-                onClick={() => viewTracks.length > 0 && startQueue(viewTracks, 0)}
-                disabled={viewTracks.length === 0}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-black transition-transform hover:scale-105 disabled:opacity-40"
-              >
-                <PlayIcon className="h-4 w-4" /> Tocar
-              </button>
+              <div className="mt-4 flex items-center justify-center gap-3 sm:justify-start">
+                <button
+                  onClick={() => viewTracks.length > 0 && startQueue(viewTracks, 0)}
+                  disabled={viewTracks.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-black transition-transform hover:scale-105 disabled:opacity-40"
+                >
+                  <PlayIcon className="h-4 w-4" /> Tocar
+                </button>
+                <button
+                  onClick={() => onToggleBandFav(view.band)}
+                  className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${
+                    view.band.is_favorite
+                      ? "border-accent/50 bg-accent/15 text-accent"
+                      : "border-white/15 bg-white/5 text-zinc-300 hover:text-white"
+                  }`}
+                  aria-label={view.band.is_favorite ? "Descurtir CD" : "Curtir CD"}
+                  aria-pressed={view.band.is_favorite}
+                  title={view.band.is_favorite ? "Remover dos CDs curtidos" : "Curtir este CD"}
+                >
+                  <HeartIcon className="h-5 w-5" filled={view.band.is_favorite} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -910,11 +994,42 @@ export default function Home() {
     ) : (
       // home
       <div className="space-y-7">
+        {newsBands.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <span>🔔</span> Novidades para você
+              <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-black">
+                {newsBands.length}
+              </span>
+            </h2>
+            <BandGrid
+              bands={newsBands}
+              selectedId={null}
+              onOpen={openBand}
+              onPlay={(b) => playFrom(() => openBand(b))}
+              onDelete={onDeleteBand}
+            />
+          </section>
+        )}
         {recent.length > 0 && (
           <section className="space-y-3">
             <h2 className="text-lg font-bold">Tocadas recentemente</h2>
             <BandGrid
               bands={recent}
+              selectedId={null}
+              onOpen={openBand}
+              onPlay={(b) => playFrom(() => openBand(b))}
+              onDelete={onDeleteBand}
+            />
+          </section>
+        )}
+        {favCds.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <HeartIcon className="h-4 w-4 text-accent" filled /> CDs curtidos
+            </h2>
+            <BandGrid
+              bands={favCds}
               selectedId={null}
               onOpen={openBand}
               onPlay={(b) => playFrom(() => openBand(b))}

@@ -41,6 +41,7 @@ export interface BandSummary {
   track_count: number;
   has_cover: boolean;
   is_hidden?: boolean;
+  is_favorite?: boolean;
   owner_id: number | null;
   owner_name: string | null;
   owner_has_avatar: boolean;
@@ -685,6 +686,35 @@ export async function fetchRadio(category: number, limit = 50): Promise<Track[]>
   const res = await apiFetch(`/api/radio?category=${category}&limit=${limit}`);
   if (!res.ok) throw new Error("Falha ao iniciar o rádio");
   return res.json();
+}
+
+// ---------- Favoritar CD inteiro (banda) ----------
+export async function fetchFavoriteCds(): Promise<BandSummary[]> {
+  const res = await apiFetch("/api/favorites/cds");
+  if (!res.ok) throw new Error("Falha ao listar CDs curtidos");
+  return res.json();
+}
+export async function toggleCdFavorite(bandId: number, fav: boolean): Promise<void> {
+  const res = await apiFetch(`/api/favorites/cds/${bandId}`, {
+    method: fav ? "PUT" : "DELETE",
+  });
+  if (!res.ok && res.status !== 204) throw new Error("Falha ao atualizar o CD curtido");
+}
+
+// ---------- Novidades (CDs novos desde a última visita) ----------
+export async function fetchNewsCount(): Promise<number> {
+  const res = await apiFetch("/api/news/count");
+  if (!res.ok) return 0;
+  const d = await res.json();
+  return typeof d.count === "number" ? d.count : 0;
+}
+export async function fetchNews(): Promise<BandSummary[]> {
+  const res = await apiFetch("/api/news");
+  if (!res.ok) throw new Error("Falha ao listar novidades");
+  return res.json();
+}
+export async function markNewsSeen(): Promise<void> {
+  await apiFetch("/api/news/seen", { method: "POST" }).catch(() => {});
 }
 
 // ---------- Upload com progresso (XHR) ----------
