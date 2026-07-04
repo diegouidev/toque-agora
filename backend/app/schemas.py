@@ -176,9 +176,36 @@ class PlaylistSummary(BaseModel):
     id: int
     name: str
     track_count: int = 0
+    # Token do link público (só na lista do próprio dono). None = não publicada.
+    public_token: str | None = None
     # Preenchidos quando a playlist é "compartilhada comigo".
     owner_email: str | None = None
     shared: bool = False
+
+
+class PublishOut(BaseModel):
+    """Resultado de publicar/despublicar uma playlist."""
+
+    public_token: str | None = None
+
+
+class PublicPlaylistTrack(BaseModel):
+    id: int
+    display_name: str
+    duration: int = 0
+    band_id: int
+    band_name: str | None = None
+    # Tem prévia de 30s pública (CD do catálogo pago)?
+    preview: bool = False
+
+
+class PublicPlaylist(BaseModel):
+    """Playlist vista por link público (sem login) — tracklist + prévias."""
+
+    name: str
+    owner_name: str | None = None
+    track_count: int = 0
+    tracks: list[PublicPlaylistTrack] = []
 
 
 class PlaylistShareIn(BaseModel):

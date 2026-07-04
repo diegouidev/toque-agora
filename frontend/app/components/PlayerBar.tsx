@@ -111,6 +111,9 @@ export default function PlayerBar({
   const [sleepEndOfTrack, setSleepEndOfTrack] = useState(false);
   const [sleepMenu, setSleepMenu] = useState(false);
   const [now, setNow] = useState(0);
+  // Velocidade de reprodução (1 = normal), persistida.
+  const [speed, setSpeed] = useState(1);
+  const [speedMenu, setSpeedMenu] = useState(false);
 
   // Gestos de toque no Now Playing: swipe p/ baixo fecha; horizontal troca faixa.
   const touchStart = useRef<{ x: number; y: number } | null>(null);
@@ -157,6 +160,22 @@ export default function PlayerBar({
       /* ignore */
     }
   }, [volume]);
+
+  // Carrega a velocidade salva uma vez.
+  useEffect(() => {
+    const raw = Number(localStorage.getItem("ta_speed"));
+    if (raw >= 0.5 && raw <= 2) setSpeed(raw);
+  }, []);
+  // Aplica a velocidade ao <audio> e persiste (playbackRate reseta ao trocar
+  // de src, então também reaplicamos no efeito de troca de faixa e no canplay).
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = speed;
+    try {
+      localStorage.setItem("ta_speed", String(speed));
+    } catch {
+      /* ignore */
+    }
+  }, [speed]);
 
   // Carrega e persiste o crossfade.
   useEffect(() => {
@@ -240,6 +259,7 @@ export default function PlayerBar({
     if (!audio || !track) return;
     audio.src = streamUrl(track.id);
     audio.load();
+    audio.playbackRate = speed; // playbackRate reseta ao trocar o src
     // Com crossfade, começa mudo (o onTimeUpdate faz o fade-in).
     audio.volume = crossfade ? 0 : volume;
     const resume = pendingResume.current;
@@ -365,6 +385,7 @@ export default function PlayerBar({
           // (ex.: iniciar um rádio), o play() disparado logo após o load() pode
           // acontecer antes do áudio estar pronto. Quando o áudio fica pronto
           // (canplay) e a intenção é tocar, garantimos o play aqui.
+          e.currentTarget.playbackRate = speed; // garante a velocidade após carregar
           if (isPlaying && e.currentTarget.paused) {
             e.currentTarget.play().catch(() => {});
           }
@@ -644,6 +665,37 @@ export default function PlayerBar({
               >
                 Crossfade
               </button>
+              {/* Velocidade de reprodução */}
+              <div className="relative">
+                <button
+                  onClick={() => setSpeedMenu((m) => !m)}
+                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    speed !== 1 ? "bg-accent text-black" : "bg-white/10 text-white/80"
+                  }`}
+                  aria-label="Velocidade de reprodução"
+                  title="Velocidade"
+                >
+                  {speed}x
+                </button>
+                {speedMenu && (
+                  <div className="absolute bottom-full right-0 mb-2 w-28 overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl">
+                    {[0.75, 1, 1.25, 1.5, 2].map((v) => (
+                      <button
+                        key={v}
+                        onClick={() => {
+                          setSpeed(v);
+                          setSpeedMenu(false);
+                        }}
+                        className={`block w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 ${
+                          v === speed ? "text-accent" : ""
+                        }`}
+                      >
+                        {v}x{v === 1 ? " (normal)" : ""}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="relative">
                 <button
                   onClick={() => setSleepMenu((m) => !m)}

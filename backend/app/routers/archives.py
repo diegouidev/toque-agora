@@ -11,6 +11,7 @@ from ..archive_service import (
     ArchiveServiceError,
     content_type_for_image,
     extract_file_bytes,
+    load_cover,
 )
 from ..auth import get_current_user
 from ..database import get_session
@@ -172,16 +173,14 @@ async def get_band_cover(
     if not await can_access_band(session, user, band_id):
         raise HTTPException(status_code=403, detail="Acesso negado.")
 
-    try:
-        data = await run_in_threadpool(
-            extract_file_bytes, archive.stored_path, archive.kind, band.cover_name
-        )
-    except ArchiveServiceError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
+    data, media_type = await run_in_threadpool(
+        load_cover, archive.stored_path, archive.kind, band.cover_name
+    )
+    if data is None:
+        raise HTTPException(status_code=404, detail="Sem capa.")
     return Response(
         content=data,
-        media_type=content_type_for_image(band.cover_name),
+        media_type=media_type,
         headers={
             "Cache-Control": "private, max-age=86400",
             # Defesa contra MIME sniffing (ex. SVG/HTML disfarçado de imagem).

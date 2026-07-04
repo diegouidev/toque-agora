@@ -33,6 +33,7 @@ import {
   fetchFavoriteCds,
   fetchNews,
   fetchRadio,
+  fetchRecommendations,
   markNewsSeen,
   toggleCdFavorite,
   fetchBandTracks,
@@ -89,6 +90,7 @@ export default function Home() {
   const [recent, setRecent] = useState<BandSummary[]>([]);
   const [newsBands, setNewsBands] = useState<BandSummary[]>([]);
   const [newsSeen, setNewsSeen] = useState(false);
+  const [recommended, setRecommended] = useState<BandSummary[]>([]);
 
   const [tab, setTab] = useState<Tab>("home");
   const [view, setView] = useState<View>(null);
@@ -178,6 +180,13 @@ export default function Home() {
       /* ignore */
     }
   }, []);
+  const loadRecommended = useCallback(async () => {
+    try {
+      setRecommended(await fetchRecommendations());
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     if (me) {
@@ -189,6 +198,7 @@ export default function Home() {
       loadShared();
       loadFavCds();
       loadNews();
+      loadRecommended();
     }
   }, [
     me,
@@ -200,6 +210,7 @@ export default function Home() {
     loadShared,
     loadFavCds,
     loadNews,
+    loadRecommended,
   ]);
 
   // Ao entrar na home com novidades, marca como vistas (limpa o badge na próxima).
@@ -1030,6 +1041,20 @@ export default function Home() {
             </h2>
             <BandGrid
               bands={favCds}
+              selectedId={null}
+              onOpen={openBand}
+              onPlay={(b) => playFrom(() => openBand(b))}
+              onDelete={onDeleteBand}
+            />
+          </section>
+        )}
+        {recommended.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <span>✨</span> Descobrir
+            </h2>
+            <BandGrid
+              bands={recommended}
               selectedId={null}
               onOpen={openBand}
               onPlay={(b) => playFrom(() => openBand(b))}

@@ -20,6 +20,7 @@ from .routers import (
     profile,
     public,
     radio,
+    recommendations,
     search,
     stats,
     stream,
@@ -104,6 +105,7 @@ app.include_router(stats.router)
 app.include_router(radio.router)
 app.include_router(cd_favorites.router)
 app.include_router(news.router)
+app.include_router(recommendations.router)
 app.include_router(public.router)
 app.include_router(stream.router)
 

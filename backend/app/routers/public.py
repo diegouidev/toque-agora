@@ -14,13 +14,18 @@ from starlette.concurrency import run_in_threadpool
 from ..access import band_is_public, public_category_ids
 from ..archive_service import (
     ArchiveServiceError,
-    content_type_for_image,
-    extract_file_bytes,
     extract_track_bytes_cached,
+    load_cover,
 )
 from ..database import get_session
-from ..models import Archive, Band, Category, Track, User
-from ..schemas import PublicCd, PublicCdDetail, PublicTrack
+from ..models import Archive, Band, Category, Playlist, PlaylistItem, Track, User
+from ..schemas import (
+    PublicCd,
+    PublicCdDetail,
+    PublicPlaylist,
+    PublicPlaylistTrack,
+    PublicTrack,
+)
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -129,20 +134,64 @@ async def public_cover(
     archive = await session.get(Archive, band.archive_id)
     if archive is None:
         raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
-    try:
-        data = await run_in_threadpool(
-            extract_file_bytes, archive.stored_path, archive.kind, band.cover_name
-        )
-    except ArchiveServiceError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    data, media_type = await run_in_threadpool(
+        load_cover, archive.stored_path, archive.kind, band.cover_name
+    )
+    if data is None:
+        raise HTTPException(status_code=404, detail="Sem capa.")
     return Response(
         content=data,
-        media_type=content_type_for_image(band.cover_name),
+        media_type=media_type,
         headers={
             "Cache-Control": "public, max-age=86400",
             "X-Content-Type-Options": "nosniff",
             "Content-Disposition": "inline",
         },
+    )
+
+
+@router.get("/playlists/{token}", response_model=PublicPlaylist)
+async def public_playlist(
+    token: str,
+    session: AsyncSession = Depends(get_session),
+) -> PublicPlaylist:
+    """Playlist por link público: tracklist + quais faixas têm prévia de 30s.
+
+    A reprodução completa continua exigindo login/assinatura — aqui só a
+    tracklist e a prévia (para CDs do catálogo público).
+    """
+    res = await session.execute(
+        select(Playlist).where(Playlist.public_token == token)
+    )
+    pl = res.scalars().first()
+    if pl is None:
+        raise HTTPException(status_code=404, detail="Playlist não encontrada.")
+    owner = await session.get(User, pl.owner_id)
+
+    rows = await session.execute(
+        select(Track, Band.id, Band.name)
+        .join(PlaylistItem, PlaylistItem.track_id == Track.id)
+        .join(Band, Band.id == Track.band_id)
+        .where(PlaylistItem.playlist_id == pl.id)
+        .order_by(PlaylistItem.position)
+    )
+    tracks: list[PublicPlaylistTrack] = []
+    for track, band_id, band_name in rows.all():
+        tracks.append(
+            PublicPlaylistTrack(
+                id=track.id,
+                display_name=track.display_name,
+                duration=track.duration,
+                band_id=band_id,
+                band_name=band_name,
+                preview=await band_is_public(session, band_id),
+            )
+        )
+    return PublicPlaylist(
+        name=pl.name,
+        owner_name=_owner_name(owner),
+        track_count=len(tracks),
+        tracks=tracks,
     )
 
 

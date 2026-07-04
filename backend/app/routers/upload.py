@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..archive_service import (
     ArchiveServiceError,
+    embedded_cover_name,
     kind_from_filename,
     list_bands_with_tracks,
     read_track_durations,
@@ -390,10 +391,20 @@ async def _index_archive(
         size_bytes=written,
     )
     for bm in band_meta:
+        cover_name = bm.get("cover_name")
+        # Sem imagem solta no arquivo? Tenta a capa embutida (ID3 APIC) da 1ª faixa.
+        if not cover_name and bm["tracks"]:
+            first_track = bm["tracks"][0]["name"]
+            try:
+                cover_name = await run_in_threadpool(
+                    embedded_cover_name, stored_path, kind, first_track
+                )
+            except Exception:
+                cover_name = None
         band = Band(
             name=bm["band_name"] or archive_stem or "Sem nome",
             prefix=bm["prefix"],
-            cover_name=bm.get("cover_name"),
+            cover_name=cover_name,
         )
         if cats:
             band.categories = list(cats)

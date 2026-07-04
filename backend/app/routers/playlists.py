@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +24,7 @@ from ..schemas import (
     PlaylistShareOut,
     PlaylistSummary,
     PlaylistTrackIn,
+    PublishOut,
     TrackOut,
 )
 
@@ -131,7 +134,10 @@ async def list_playlists(
         .order_by(Playlist.created_at.desc())
     )
     return [
-        PlaylistSummary(id=p.id, name=p.name, track_count=c) for p, c in res.all()
+        PlaylistSummary(
+            id=p.id, name=p.name, track_count=c, public_token=p.public_token
+        )
+        for p, c in res.all()
     ]
 
 
@@ -153,6 +159,33 @@ async def _owned_playlist(playlist_id: int, user: User, session: AsyncSession) -
     if pl is None or pl.owner_id != user.id:
         raise HTTPException(status_code=404, detail="Playlist não encontrada.")
     return pl
+
+
+@router.post("/playlists/{playlist_id}/publish", response_model=PublishOut)
+async def publish_playlist(
+    playlist_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> PublishOut:
+    """Gera (ou reaproveita) o link público da playlist (só o dono)."""
+    pl = await _owned_playlist(playlist_id, user, session)
+    if not pl.public_token:
+        pl.public_token = uuid.uuid4().hex
+        await session.commit()
+    return PublishOut(public_token=pl.public_token)
+
+
+@router.delete("/playlists/{playlist_id}/publish", status_code=204)
+async def unpublish_playlist(
+    playlist_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Desativa o link público (o link antigo deixa de funcionar)."""
+    pl = await _owned_playlist(playlist_id, user, session)
+    pl.public_token = None
+    await session.commit()
+    return Response(status_code=204)
 
 
 @router.patch("/playlists/{playlist_id}", response_model=PlaylistSummary)

@@ -9,6 +9,7 @@ sem descompactar o arquivo inteiro no disco.
   (instalado no Dockerfile do back-end). A biblioteca autodetecta o backend.
 """
 
+import io
 import logging
 import os
 import posixpath
@@ -234,6 +235,58 @@ def read_track_durations(stored_path: str, kind: Kind, names: list[str]) -> dict
     except (rarfile.Error, zipfile.BadZipFile):
         pass
     return durations
+
+
+def embedded_cover_name(stored_path: str, kind: Kind, track_name: str) -> str | None:
+    """Se a faixa tiver capa embutida (ID3 APIC), devolve um nome-sentinela.
+
+    O sentinela ('@id3:<caminho interno>') é guardado em Band.cover_name quando
+    o CD não tem imagem solta no arquivo; o cover é extraído sob demanda depois.
+    Retorna None se não houver capa embutida ou a faixa for ilegível.
+    """
+    data, _mime = extract_embedded_cover(stored_path, kind, track_name)
+    return f"@id3:{track_name}" if data else None
+
+
+def load_cover(
+    stored_path: str, kind: Kind, cover_name: str
+) -> tuple[bytes | None, str]:
+    """Resolve a capa de um CD a partir do valor de Band.cover_name.
+
+    - '@id3:<faixa>'  → arte embutida (APIC) da faixa.
+    - qualquer outro  → imagem solta dentro do arquivo (caminho interno).
+    Retorna (bytes, mime) ou (None, "") em falha.
+    """
+    if cover_name.startswith("@id3:"):
+        return extract_embedded_cover(stored_path, kind, cover_name[len("@id3:") :])
+    try:
+        data = extract_file_bytes(stored_path, kind, cover_name)
+    except ArchiveServiceError:
+        return None, ""
+    return data, content_type_for_image(cover_name)
+
+
+def extract_embedded_cover(
+    stored_path: str, kind: Kind, track_name: str
+) -> tuple[bytes | None, str]:
+    """Extrai a imagem de capa embutida (APIC) de um MP3 dentro do arquivo.
+
+    Retorna (bytes, mime). (None, "") se a faixa não tiver arte embutida.
+    """
+    from mutagen.id3 import ID3
+
+    try:
+        raw = extract_track_bytes(stored_path, kind, track_name)
+    except ArchiveServiceError:
+        return None, ""
+    try:
+        tags = ID3(io.BytesIO(raw))
+    except Exception:
+        return None, ""
+    for frame in tags.getall("APIC"):
+        if getattr(frame, "data", None):
+            return frame.data, getattr(frame, "mime", "") or "image/jpeg"
+    return None, ""
 
 
 def _read_limited(fh, declared_size: int | None) -> bytes:

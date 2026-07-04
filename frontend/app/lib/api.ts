@@ -18,6 +18,7 @@ export interface PlaylistSummary {
   id: number;
   name: string;
   track_count: number;
+  public_token?: string | null;
   owner_email?: string | null;
   shared?: boolean;
 }
@@ -529,6 +530,39 @@ export async function deletePlaylist(id: number): Promise<void> {
   if (!res.ok && res.status !== 204) throw new Error("Falha ao excluir playlist");
 }
 
+// ---------- Link público de playlist ----------
+export async function publishPlaylist(id: number): Promise<string | null> {
+  const res = await apiFetch(`/api/playlists/${id}/publish`, { method: "POST" });
+  if (!res.ok) throw new Error("Falha ao publicar a playlist");
+  const d = await res.json();
+  return d.public_token ?? null;
+}
+export async function unpublishPlaylist(id: number): Promise<void> {
+  const res = await apiFetch(`/api/playlists/${id}/publish`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error("Falha ao remover o link público");
+}
+export interface PublicPlaylistTrack {
+  id: number;
+  display_name: string;
+  duration: number;
+  band_id: number;
+  band_name: string | null;
+  preview: boolean;
+}
+export interface PublicPlaylist {
+  name: string;
+  owner_name: string | null;
+  track_count: number;
+  tracks: PublicPlaylistTrack[];
+}
+export async function fetchPublicPlaylist(token: string): Promise<PublicPlaylist> {
+  const res = await fetch(`${API_URL}/api/public/playlists/${token}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Playlist não encontrada");
+  return res.json();
+}
+
 export async function fetchPlaylistTracks(id: number): Promise<Track[]> {
   const res = await apiFetch(`/api/playlists/${id}/tracks`);
   if (!res.ok) throw new Error("Falha ao listar faixas da playlist");
@@ -715,6 +749,13 @@ export async function fetchNews(): Promise<BandSummary[]> {
 }
 export async function markNewsSeen(): Promise<void> {
   await apiFetch("/api/news/seen", { method: "POST" }).catch(() => {});
+}
+
+// ---------- Recomendações ("Descobrir") ----------
+export async function fetchRecommendations(limit = 12): Promise<BandSummary[]> {
+  const res = await apiFetch(`/api/recommendations?limit=${limit}`);
+  if (!res.ok) throw new Error("Falha ao carregar recomendações");
+  return res.json();
 }
 
 // ---------- Upload com progresso (XHR) ----------

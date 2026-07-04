@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import {
   fetchPlaylistShares,
+  publishPlaylist,
   sharePlaylist,
+  unpublishPlaylist,
   unsharePlaylist,
   type PlaylistShareOut,
   type PlaylistSummary,
 } from "../lib/api";
 import { useEscClose } from "../lib/useEscClose";
+import { useToast } from "./Toast";
 import { CloseIcon } from "./icons";
 
 interface Props {
@@ -20,10 +23,55 @@ interface Props {
 
 export default function ShareModal({ playlist, onClose, onChanged }: Props) {
   useEscClose(onClose);
+  const toast = useToast();
   const [shares, setShares] = useState<PlaylistShareOut[]>([]);
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [token, setToken] = useState<string | null>(playlist.public_token ?? null);
+  const publicUrl =
+    token && typeof window !== "undefined"
+      ? `${window.location.origin}/p/${token}`
+      : null;
+
+  async function publish() {
+    try {
+      const t = await publishPlaylist(playlist.id);
+      setToken(t);
+      onChanged?.();
+      if (t) {
+        try {
+          await navigator.clipboard.writeText(`${window.location.origin}/p/${t}`);
+          toast.success("Link público criado e copiado!");
+        } catch {
+          toast.success("Link público criado.");
+        }
+      }
+    } catch {
+      toast.error("Falha ao publicar a playlist.");
+    }
+  }
+
+  async function unpublish() {
+    try {
+      await unpublishPlaylist(playlist.id);
+      setToken(null);
+      onChanged?.();
+      toast.success("Link público desativado.");
+    } catch {
+      toast.error("Falha ao desativar o link.");
+    }
+  }
+
+  async function copyLink() {
+    if (!publicUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      toast.success("Link copiado!");
+    } catch {
+      toast.error("Não foi possível copiar.");
+    }
+  }
 
   async function load() {
     try {
@@ -107,6 +155,48 @@ export default function ShareModal({ playlist, onClose, onChanged }: Props) {
           </button>
         </form>
         {error && <p className="text-sm text-red-400">{error}</p>}
+
+        {/* Link público (qualquer pessoa com o link vê a tracklist + prévia 30s) */}
+        <div className="space-y-2 border-t border-white/10 pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+            Link público
+          </p>
+          {token ? (
+            <>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={publicUrl ?? ""}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs outline-none"
+                />
+                <button
+                  onClick={copyLink}
+                  className="shrink-0 rounded-lg bg-accent px-3 text-sm font-semibold text-black"
+                >
+                  Copiar
+                </button>
+              </div>
+              <button
+                onClick={unpublish}
+                className="text-xs text-red-400 hover:text-red-300"
+              >
+                Desativar link público
+              </button>
+              <p className="text-[11px] text-zinc-500">
+                Quem tem o link vê a lista de faixas e ouve prévias de 30s (dos CDs do
+                catálogo). A reprodução completa continua só para assinantes.
+              </p>
+            </>
+          ) : (
+            <button
+              onClick={publish}
+              className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/20"
+            >
+              Criar link público
+            </button>
+          )}
+        </div>
 
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
