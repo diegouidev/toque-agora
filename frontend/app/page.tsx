@@ -21,7 +21,14 @@ import Sidebar, { type Tab } from "./components/Sidebar";
 import TrackList from "./components/TrackList";
 import UploadModal from "./components/UploadModal";
 import UpgradeModal from "./components/UpgradeModal";
-import { EditIcon, HeartIcon, MusicIcon, PlayIcon, UploadIcon } from "./components/icons";
+import {
+  EditIcon,
+  HeartIcon,
+  MenuIcon,
+  MusicIcon,
+  PlayIcon,
+  UploadIcon,
+} from "./components/icons";
 import {
   addToPlaylist,
   avatarUrl,
@@ -115,6 +122,7 @@ export default function Home() {
   const [showProfile, setShowProfile] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showDownloads, setShowDownloads] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   // Categoria a pré-marcar no upload (null = upload genérico).
   const [uploadCategory, setUploadCategory] = useState<number | null>(null);
@@ -1115,61 +1123,103 @@ export default function Home() {
 
       <main className="min-w-0 flex-1 pb-44 lg:pb-28">
         {/* Header mobile (a sidebar cobre o desktop). */}
-        <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-white/5 bg-base/80 px-4 py-3 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-white/5 bg-base/80 px-4 py-3 backdrop-blur lg:hidden">
           <h1 className="font-display text-lg font-black uppercase leading-none tracking-tight">
             Toque <span className="text-accent">Agora</span>
           </h1>
-          <div className="flex items-center gap-2">
-            {me.can_upload && (
-              <button
-                onClick={() => openUpload()}
-                className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
-              >
-                <UploadIcon className="h-3.5 w-3.5" /> Enviar
-              </button>
+
+          {/* Menu hambúrguer (consolida as ações do header) */}
+          <div className="relative">
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              className="flex items-center gap-2 rounded-full bg-white/10 py-1 pl-1 pr-2.5 hover:bg-white/20"
+              aria-label="Menu"
+              aria-expanded={menuOpen}
+            >
+              <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-accent to-indigo-600 text-[10px] font-black">
+                {me.has_avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarUrl(me.id)} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  (me.display_name || me.email).slice(0, 2).toUpperCase()
+                )}
+              </span>
+              <MenuIcon className="h-5 w-5 text-zinc-300" />
+            </button>
+
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                <div className="absolute right-0 top-12 z-50 w-60 overflow-hidden rounded-2xl border border-white/10 bg-surface shadow-2xl">
+                  <div className="border-b border-white/10 px-4 py-3">
+                    <p className="truncate text-sm font-semibold">
+                      {me.display_name || me.email}
+                    </p>
+                    {me.display_name && (
+                      <p className="truncate text-xs text-zinc-400">{me.email}</p>
+                    )}
+                  </div>
+                  {me.can_upload && (
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        openUpload();
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/10"
+                    >
+                      <UploadIcon className="h-4 w-4 text-zinc-400" /> Enviar músicas
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setShowProfile(true);
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/10"
+                  >
+                    <span className="w-4 text-center">👤</span> Meu perfil
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setShowStats(true);
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/10"
+                  >
+                    <span className="w-4 text-center">📊</span> Minha retrospectiva
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setShowDownloads(true);
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/10"
+                  >
+                    <span className="w-4 text-center">📥</span> Baixados (offline)
+                  </button>
+                  {me.is_admin && (
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        router.push("/admin");
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/10"
+                    >
+                      <span className="w-4 text-center">⚙️</span> Painel admin
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      logout();
+                    }}
+                    className="flex w-full items-center gap-3 border-t border-white/10 px-4 py-3 text-left text-sm text-red-400 hover:bg-white/10"
+                  >
+                    <span className="w-4 text-center">⏻</span> Sair
+                  </button>
+                </div>
+              </>
             )}
-            {me.is_admin && (
-              <button
-                onClick={() => router.push("/admin")}
-                className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
-              >
-                Admin
-              </button>
-            )}
-            <button
-              onClick={() => setShowStats(true)}
-              className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
-              title="Minha retrospectiva"
-            >
-              📊
-            </button>
-            <button
-              onClick={() => setShowDownloads(true)}
-              className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
-              title="Baixados (offline)"
-            >
-              📥
-            </button>
-            <button
-              onClick={() => setShowProfile(true)}
-              className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-accent to-indigo-600 text-[10px] font-black"
-              title="Meu perfil"
-              aria-label="Meu perfil"
-            >
-              {me.has_avatar ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatarUrl(me.id)} alt="" className="h-full w-full object-cover" />
-              ) : (
-                (me.display_name || me.email).slice(0, 2).toUpperCase()
-              )}
-            </button>
-            <button
-              onClick={logout}
-              className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
-              title={me.email}
-            >
-              Sair
-            </button>
           </div>
         </header>
 

@@ -415,7 +415,7 @@ export default function PlayerBar({
 
       {/* ----- Mini barra (rodapé) ----- */}
       {/* lg:left-64 = não cobre o sidebar (Admin/Sair ficam clicáveis no desktop). */}
-      <footer className="fixed inset-x-0 bottom-[57px] z-30 border-t border-white/10 bg-black/80 backdrop-blur-xl lg:bottom-0 lg:left-64 lg:pb-[env(safe-area-inset-bottom)]">
+      <footer className="fixed inset-x-0 bottom-[57px] z-30 border-t border-white/10 bg-black/90 backdrop-blur-xl lg:bottom-0 lg:left-64 lg:pb-[env(safe-area-inset-bottom)]">
         <div className="flex w-full items-center gap-3 px-4 py-2.5">
           {/* Capa + título: abre o Now Playing */}
           <button
@@ -658,9 +658,9 @@ export default function PlayerBar({
               </button>
             </div>
 
-            {/* Volume + sleep timer */}
-            <div className="flex items-center gap-4">
-              <div className="flex flex-1 items-center gap-2">
+            {/* Volume + controles (crossfade / velocidade / timer) */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
                 <VolumeIcon muted={volume === 0} className="h-5 w-5 shrink-0 text-white/70" />
                 <input
                   type="range"
@@ -674,6 +674,7 @@ export default function PlayerBar({
                   aria-label="Volume"
                 />
               </div>
+              <div className="flex flex-wrap items-center justify-center gap-2">
               <button
                 onClick={toggleCrossfade}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -757,6 +758,7 @@ export default function PlayerBar({
                     )}
                   </div>
                 )}
+              </div>
               </div>
             </div>
           </div>
