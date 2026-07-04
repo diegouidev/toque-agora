@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Track } from "../lib/api";
 import { DragIcon, EditIcon, HeartIcon, PlayIcon, PlusIcon, QueueIcon } from "./icons";
 
@@ -36,20 +36,45 @@ export default function TrackList({
   onRemove,
   onReorder,
 }: Props) {
+  // Drag-and-drop com Pointer Events (funciona no MOUSE e no TOQUE — o HTML5
+  // drag nativo não dispara em telas de toque). Estado para o visual; refs para
+  // a lógica (evita closure obsoleto dentro dos handlers de ponteiro).
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  const fromRef = useRef<number | null>(null);
+  const overRef = useRef<number | null>(null);
 
-  function handleDrop(target: number) {
-    if (dragIndex == null || dragIndex === target) {
-      setDragIndex(null);
-      setOverIndex(null);
-      return;
+  function startDrag(e: React.PointerEvent, i: number) {
+    if (!onReorder) return;
+    fromRef.current = i;
+    overRef.current = i;
+    setDragIndex(i);
+    setOverIndex(i);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function moveDrag(e: React.PointerEvent) {
+    if (fromRef.current == null) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+    const li = el?.closest<HTMLElement>("[data-track-index]");
+    if (li) {
+      const idx = Number(li.dataset.trackIndex);
+      if (!Number.isNaN(idx)) {
+        overRef.current = idx;
+        setOverIndex(idx);
+      }
     }
-    const next = [...tracks];
-    const [moved] = next.splice(dragIndex, 1);
-    next.splice(target, 0, moved);
+  }
+  function endDrag() {
+    const from = fromRef.current;
+    const to = overRef.current;
+    fromRef.current = null;
+    overRef.current = null;
     setDragIndex(null);
     setOverIndex(null);
+    if (from == null || to == null || from === to) return;
+    const next = [...tracks];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
     onReorder?.(next);
   }
 
@@ -70,32 +95,31 @@ export default function TrackList({
         return (
           <li
             key={track.id}
-            onDragOver={(e) => {
-              if (!onReorder) return;
-              e.preventDefault();
-              setOverIndex(i);
-            }}
-            onDrop={() => onReorder && handleDrop(i)}
+            data-track-index={i}
             className={isOver ? "border-t-2 border-accent" : ""}
           >
             <div
               role="button"
               tabIndex={0}
               onClick={() => onSelect(i)}
-              className={`group flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors sm:gap-4 sm:px-4 ${
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(i);
+                }
+              }}
+              className={`group flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 sm:gap-4 sm:px-4 ${
                 active ? "bg-white/10" : "hover:bg-white/5"
               } ${dragIndex === i ? "opacity-40" : ""}`}
             >
-              {/* Handle de arrasto (só em playlist) */}
+              {/* Handle de arrasto (só em playlist) — Pointer Events p/ funcionar no toque */}
               {onReorder && (
                 <span
-                  draggable
-                  onDragStart={() => setDragIndex(i)}
-                  onDragEnd={() => {
-                    setDragIndex(null);
-                    setOverIndex(null);
-                  }}
+                  onPointerDown={(e) => startDrag(e, i)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={endDrag}
                   onClick={(e) => e.stopPropagation()}
+                  style={{ touchAction: "none" }}
                   className="shrink-0 cursor-grab text-zinc-600 hover:text-white active:cursor-grabbing"
                   aria-label="Arrastar para reordenar"
                   title="Arrastar"

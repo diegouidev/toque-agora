@@ -2,14 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { coverUrl, recordPlay, streamUrl, type Track } from "../lib/api";
+import { gradientFor } from "../lib/covers";
 import {
   BroomIcon,
   ChevronDownIcon,
   ClockIcon,
+  HeartIcon,
   MusicIcon,
   NextIcon,
   PauseIcon,
   PlayIcon,
+  PlusIcon,
   PrevIcon,
   QueueIcon,
   RepeatIcon,
@@ -35,6 +38,10 @@ interface Props {
   onClearQueue: () => void;
   hasNext: boolean;
   hasPrev: boolean;
+  // Ações sobre a faixa atual (Now Playing): curtir e adicionar à playlist.
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
+  onAddToPlaylist?: () => void;
   // Persistência: tempo inicial ao restaurar (seek na faixa retomada) e
   // callback para o pai salvar a posição atual periodicamente.
   resumeTime?: number;
@@ -50,22 +57,6 @@ function fmt(s: number): string {
 
 // Duração (s) do fade-in/fade-out do crossfade.
 const CROSSFADE_SEC = 3;
-
-// Gradiente determinístico (capa "fake" da banda) — igual ao BandGrid.
-const GRADIENTS = [
-  "from-rose-500 to-orange-500",
-  "from-accent to-emerald-700",
-  "from-indigo-500 to-purple-600",
-  "from-sky-500 to-blue-700",
-  "from-fuchsia-500 to-pink-600",
-  "from-amber-400 to-red-500",
-  "from-teal-400 to-cyan-600",
-];
-function gradientFor(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return GRADIENTS[h % GRADIENTS.length];
-}
 
 export default function PlayerBar({
   track,
@@ -85,6 +76,9 @@ export default function PlayerBar({
   onClearQueue,
   hasNext,
   hasPrev,
+  isFavorite,
+  onToggleFavorite,
+  onAddToPlaylist,
   resumeTime,
   onTime,
 }: Props) {
@@ -117,6 +111,29 @@ export default function PlayerBar({
   const [sleepEndOfTrack, setSleepEndOfTrack] = useState(false);
   const [sleepMenu, setSleepMenu] = useState(false);
   const [now, setNow] = useState(0);
+
+  // Gestos de toque no Now Playing: swipe p/ baixo fecha; horizontal troca faixa.
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  function onTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    touchStart.current = { x: t.clientX, y: t.clientY };
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    const s = touchStart.current;
+    touchStart.current = null;
+    if (!s) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - s.x;
+    const dy = t.clientY - s.y;
+    const ax = Math.abs(dx);
+    const ay = Math.abs(dy);
+    if (ay > 80 && ay > ax && dy > 0) {
+      setExpanded(false); // arrastar para baixo fecha
+    } else if (ax > 60 && ax > ay) {
+      if (dx < 0 && hasNext) onNext();
+      else if (dx > 0 && hasPrev) onPrev();
+    }
+  }
 
   // Ref de isPlaying para uso dentro de timeouts (evita closure obsoleto).
   const isPlayingRef = useRef(isPlaying);
@@ -482,8 +499,12 @@ export default function PlayerBar({
           </div>
 
           <div className="flex flex-1 flex-col justify-center gap-6 px-7">
-            {/* Capa grande */}
-            <div className="mx-auto flex aspect-square w-full max-w-[340px] items-center justify-center overflow-hidden rounded-2xl bg-black/25 shadow-2xl">
+            {/* Capa grande — área de gestos (swipe ↓ fecha, ← → troca faixa) */}
+            <div
+              onTouchStart={onTouchStart}
+              onTouchEnd={onTouchEnd}
+              className="mx-auto flex aspect-square w-full max-w-[340px] items-center justify-center overflow-hidden rounded-2xl bg-black/25 shadow-2xl"
+            >
               {coverImg ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={coverImg} alt={bandName ?? ""} className="h-full w-full object-cover" />
@@ -492,10 +513,35 @@ export default function PlayerBar({
               )}
             </div>
 
-            {/* Título + artista */}
-            <div>
-              <h2 className="truncate text-2xl font-black">{track.display_name}</h2>
-              <p className="truncate text-zinc-300">{bandName ?? "—"}</p>
+            {/* Título + artista + ações (curtir / adicionar à playlist) */}
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-2xl font-black">{track.display_name}</h2>
+                <p className="truncate text-zinc-300">{bandName ?? "—"}</p>
+              </div>
+              {onToggleFavorite && (
+                <button
+                  onClick={onToggleFavorite}
+                  className={`shrink-0 p-2 transition-colors ${
+                    isFavorite ? "text-accent" : "text-white/70 hover:text-white"
+                  }`}
+                  aria-label={isFavorite ? "Descurtir" : "Curtir"}
+                  aria-pressed={isFavorite}
+                  title={isFavorite ? "Descurtir" : "Curtir"}
+                >
+                  <HeartIcon className="h-6 w-6" filled={isFavorite} />
+                </button>
+              )}
+              {onAddToPlaylist && (
+                <button
+                  onClick={onAddToPlaylist}
+                  className="shrink-0 p-2 text-white/70 transition-colors hover:text-white"
+                  aria-label="Adicionar à playlist"
+                  title="Adicionar à playlist"
+                >
+                  <PlusIcon className="h-6 w-6" />
+                </button>
+              )}
             </div>
 
             {progress}

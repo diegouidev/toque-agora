@@ -3,6 +3,8 @@ import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./lib/auth-context";
 import ServiceWorkerRegister from "./components/ServiceWorkerRegister";
+import { ToastProvider } from "./components/Toast";
+import { DialogProvider } from "./components/Dialog";
 
 const display = Montserrat({
   subsets: ["latin"],
@@ -48,7 +50,11 @@ export default function RootLayout({
     <html lang="pt-BR" className={display.variable}>
       <body>
         <ServiceWorkerRegister />
-        <AuthProvider>{children}</AuthProvider>
+        <ToastProvider>
+          <DialogProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </DialogProvider>
+        </ToastProvider>
       </body>
     </html>
   );

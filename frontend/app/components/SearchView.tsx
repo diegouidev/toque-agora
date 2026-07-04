@@ -10,6 +10,7 @@ import {
 } from "../lib/api";
 import BandGrid from "./BandGrid";
 import TrackList from "./TrackList";
+import { BandGridSkeleton, TrackListSkeleton } from "./Skeleton";
 import { SearchIcon } from "./icons";
 
 interface Props {
@@ -140,6 +141,13 @@ export default function SearchView({
         <p className="px-1 py-10 text-center text-sm text-zinc-500">
           Digite ao menos 2 letras para buscar.
         </p>
+      )}
+
+      {q.trim().length >= 2 && loading && (
+        <div className="space-y-6">
+          <BandGridSkeleton count={4} />
+          <TrackListSkeleton count={5} />
+        </div>
       )}
 
       {q.trim().length >= 2 && !loading && !hasResults && (

@@ -7,6 +7,7 @@ import ProfileModal from "./components/ProfileModal";
 import SubscribeView from "./components/SubscribeView";
 import BandCategories from "./components/BandCategories";
 import BandGrid from "./components/BandGrid";
+import { BandGridSkeleton } from "./components/Skeleton";
 import LandingView from "./components/LandingView";
 import MobileNav from "./components/MobileNav";
 import PlayerBar from "./components/PlayerBar";
@@ -36,6 +37,7 @@ import {
   fetchSharedPlaylists,
   removeFromPlaylist,
   renameBand,
+  renamePlaylist,
   renameTrack,
   setBandHidden,
   reorderPlaylist,
@@ -49,6 +51,8 @@ import {
   type UploadResult,
 } from "./lib/api";
 import { useAuth } from "./lib/auth-context";
+import { useToast } from "./components/Toast";
+import { useDialog } from "./components/Dialog";
 import { totalDurationLabel } from "./lib/format";
 import {
   clearPlayerState,
@@ -65,6 +69,8 @@ type View =
 
 export default function Home() {
   const { me, loading, logout, refresh } = useAuth();
+  const toast = useToast();
+  const dialog = useDialog();
 
   const [bands, setBands] = useState<BandSummary[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -100,11 +106,16 @@ export default function Home() {
   const [addTrack, setAddTrack] = useState<Track | null>(null);
   const [shareTarget, setShareTarget] = useState<PlaylistSummary | null>(null);
 
+  const [bandsLoading, setBandsLoading] = useState(true);
+  const [bandsError, setBandsError] = useState(false);
   const loadBands = useCallback(async () => {
+    setBandsError(false);
     try {
       setBands(await fetchBands(filterCategory));
     } catch {
-      /* ignore */
+      setBandsError(true);
+    } finally {
+      setBandsLoading(false);
     }
   }, [filterCategory]);
   const loadCategories = useCallback(async () => {
@@ -237,34 +248,44 @@ export default function Home() {
 
   // ---- Renomear (dono/admin) ----
   async function onRenameTrack(track: Track) {
-    const name = prompt("Novo nome da faixa:", track.display_name);
-    if (name == null || !name.trim()) return;
+    const name = await dialog.prompt({
+      title: "Renomear faixa",
+      defaultValue: track.display_name,
+      confirmLabel: "Salvar",
+    });
+    if (name == null) return;
     try {
-      const updated = await renameTrack(track.id, name.trim());
+      const updated = await renameTrack(track.id, name);
       setViewTracks((ts) =>
         ts.map((t) =>
           t.id === track.id ? { ...t, display_name: updated.display_name } : t,
         ),
       );
+      toast.success("Faixa renomeada.");
     } catch {
-      alert("Falha ao renomear.");
+      toast.error("Falha ao renomear a faixa.");
     }
   }
 
   async function onRenameBand(band: BandSummary) {
-    const name = prompt("Novo nome da banda:", band.name);
-    if (name == null || !name.trim()) return;
+    const name = await dialog.prompt({
+      title: "Renomear banda",
+      defaultValue: band.name,
+      confirmLabel: "Salvar",
+    });
+    if (name == null) return;
     try {
-      await renameBand(band.id, name.trim());
+      await renameBand(band.id, name);
       loadBands();
       loadRecent();
       setView((v) =>
         v && v.kind === "band" && v.band.id === band.id
-          ? { kind: "band", band: { ...v.band, name: name.trim() } }
+          ? { kind: "band", band: { ...v.band, name } }
           : v,
       );
+      toast.success("Banda renomeada.");
     } catch {
-      alert("Falha ao renomear.");
+      toast.error("Falha ao renomear a banda.");
     }
   }
 
@@ -280,8 +301,9 @@ export default function Home() {
           ? { kind: "band", band: { ...v.band, is_hidden: hidden } }
           : v,
       );
+      toast.success(hidden ? "CD ocultado da vitrine." : "CD visível na vitrine.");
     } catch {
-      alert("Falha ao alterar a visibilidade.");
+      toast.error("Falha ao alterar a visibilidade.");
     }
   }
 
@@ -348,18 +370,21 @@ export default function Home() {
   }
 
   async function onDeleteBand(band: BandSummary) {
-    if (
-      !confirm(
-        `Excluir o arquivo de "${band.name}" para sempre? Todas as bandas do mesmo arquivo serão removidas e o arquivo apagado do disco.`,
-      )
-    )
-      return;
+    const ok = await dialog.confirm({
+      title: `Excluir "${band.name}"?`,
+      message:
+        "O arquivo inteiro será apagado do disco e todas as bandas dele serão removidas. Esta ação não pode ser desfeita.",
+      confirmLabel: "Excluir",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await deleteArchive(band.archive_id);
     } catch {
-      alert("Falha ao excluir.");
+      toast.error("Falha ao excluir.");
       return;
     }
+    toast.success("Arquivo excluído.");
     if (view?.kind === "band" && view.band.archive_id === band.archive_id) {
       setView(null);
       setViewTracks([]);
@@ -442,11 +467,20 @@ export default function Home() {
   }
 
   // ---- Curtir / playlist (operam na lista exibida) ----
+  // Aplica o estado de favorito a uma faixa em todas as listas em memória
+  // (lista exibida e fila) — assim o coração fica igual no TrackList e no player.
+  function setFavInState(trackId: number, fav: boolean) {
+    setViewTracks((ts) =>
+      ts.map((t) => (t.id === trackId ? { ...t, is_favorite: fav } : t)),
+    );
+    setQueue((q) =>
+      q.map((t) => (t.id === trackId ? { ...t, is_favorite: fav } : t)),
+    );
+  }
+
   async function onToggleFav(track: Track) {
     const nowFav = !track.is_favorite;
-    setViewTracks((ts) =>
-      ts.map((t) => (t.id === track.id ? { ...t, is_favorite: nowFav } : t)),
-    );
+    setFavInState(track.id, nowFav);
     try {
       await toggleFavorite(track.id, nowFav);
       loadFavCount();
@@ -454,9 +488,9 @@ export default function Home() {
         setViewTracks((ts) => ts.filter((t) => t.id !== track.id));
       }
     } catch {
-      setViewTracks((ts) =>
-        ts.map((t) => (t.id === track.id ? { ...t, is_favorite: !nowFav } : t)),
-      );
+      // Reverte o estado otimista e avisa.
+      setFavInState(track.id, !nowFav);
+      toast.error("Não foi possível atualizar as curtidas.");
     }
   }
 
@@ -465,8 +499,9 @@ export default function Home() {
     try {
       await addToPlaylist(playlistId, addTrack.id);
       loadPlaylists();
+      toast.success("Adicionada à playlist.");
     } catch {
-      alert("Falha ao adicionar.");
+      toast.error("Falha ao adicionar à playlist.");
     }
     setAddTrack(null);
   }
@@ -492,14 +527,45 @@ export default function Home() {
     await createPlaylist(name);
     loadPlaylists();
   }
+  async function onRenamePlaylist(pl: PlaylistSummary) {
+    const name = await dialog.prompt({
+      title: "Renomear playlist",
+      defaultValue: pl.name,
+      confirmLabel: "Salvar",
+    });
+    if (name == null || name === pl.name) return;
+    try {
+      await renamePlaylist(pl.id, name);
+      loadPlaylists();
+      setView((v) =>
+        v && v.kind === "playlist" && v.playlist.id === pl.id
+          ? { ...v, playlist: { ...v.playlist, name } }
+          : v,
+      );
+      toast.success("Playlist renomeada.");
+    } catch {
+      toast.error("Falha ao renomear a playlist.");
+    }
+  }
   async function onDeletePlaylist(pl: PlaylistSummary) {
-    if (!confirm(`Excluir a playlist "${pl.name}"?`)) return;
-    await deletePlaylist(pl.id);
+    const ok = await dialog.confirm({
+      title: `Excluir a playlist "${pl.name}"?`,
+      confirmLabel: "Excluir",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deletePlaylist(pl.id);
+    } catch {
+      toast.error("Falha ao excluir a playlist.");
+      return;
+    }
     if (view?.kind === "playlist" && view.playlist.id === pl.id) {
       setView(null);
       setViewTracks([]);
     }
     loadPlaylists();
+    toast.success("Playlist excluída.");
   }
 
   // ----- Guards -----
@@ -735,7 +801,22 @@ export default function Home() {
           )}
         </div>
       )}
-      {bands.length > 0 ? (
+      {bandsLoading ? (
+        <BandGridSkeleton />
+      ) : bandsError ? (
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/5 px-6 py-10 text-center">
+          <p className="text-sm text-zinc-400">Não foi possível carregar sua coleção.</p>
+          <button
+            onClick={() => {
+              setBandsLoading(true);
+              loadBands();
+            }}
+            className="mt-3 rounded-full bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/20"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      ) : bands.length > 0 ? (
         <BandGrid
           bands={bands}
           selectedId={null}
@@ -804,6 +885,7 @@ export default function Home() {
           onOpenPlaylist={(pl) => playFrom(() => openPlaylist(pl))}
           onOpenShared={(pl) => playFrom(() => openShared(pl))}
           onShare={(pl) => setShareTarget(pl)}
+          onRename={onRenamePlaylist}
           onCreate={onCreatePlaylist}
           onDelete={onDeletePlaylist}
         />
@@ -825,6 +907,7 @@ export default function Home() {
         onOpenPlaylist={(pl) => playFrom(() => openPlaylist(pl))}
         onOpenShared={(pl) => playFrom(() => openShared(pl))}
         onShare={(pl) => setShareTarget(pl)}
+        onRename={onRenamePlaylist}
         onCreate={onCreatePlaylist}
         onDelete={onDeletePlaylist}
         onUpload={() => openUpload()}
@@ -922,6 +1005,9 @@ export default function Home() {
         onClearQueue={clearQueue}
         hasNext={queue.length > 0}
         hasPrev={queue.length > 0}
+        isFavorite={currentTrack?.is_favorite ?? false}
+        onToggleFavorite={currentTrack ? () => onToggleFav(currentTrack) : undefined}
+        onAddToPlaylist={currentTrack ? () => setAddTrack(currentTrack) : undefined}
         resumeTime={resumeTime}
         onTime={(t) => {
           currentTimeRef.t = t;

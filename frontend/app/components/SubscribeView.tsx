@@ -10,6 +10,8 @@ import {
   subscribe,
 } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
+import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
 
 function brl(cents: number): string {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -25,6 +27,8 @@ function fmtDate(iso: string | null): string {
 
 export default function SubscribeView() {
   const { refresh } = useAuth();
+  const toast = useToast();
+  const dialog = useDialog();
   const [plans, setPlans] = useState<PublicPlan[]>([]);
   const [status, setStatus] = useState<BillingStatus | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -69,11 +73,21 @@ export default function SubscribeView() {
   const active = status?.status === "active";
 
   async function onCancel() {
-    if (!confirm("Cancelar sua assinatura? O acesso continua até o vencimento.")) return;
+    const ok = await dialog.confirm({
+      title: "Cancelar sua assinatura?",
+      message: "O acesso continua até o vencimento atual.",
+      confirmLabel: "Cancelar assinatura",
+      cancelLabel: "Voltar",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       setStatus(await cancelSubscription());
+      toast.success("Assinatura cancelada. O acesso vale até o vencimento.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao cancelar");
+      const msg = err instanceof Error ? err.message : "Falha ao cancelar";
+      setError(msg);
+      toast.error(msg);
     }
   }
 

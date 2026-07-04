@@ -9,9 +9,11 @@ import {
   uploadAvatar,
 } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
+import { useEscClose } from "../lib/useEscClose";
 
 export default function ProfileModal({ onClose }: { onClose: () => void }) {
   const { me, refresh } = useAuth();
+  useEscClose(onClose);
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(me?.display_name ?? "");
   const [oldPwd, setOldPwd] = useState("");
@@ -80,6 +82,9 @@ export default function ProfileModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Meu perfil"
         className="w-full max-w-md space-y-6 rounded-2xl border border-white/10 bg-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

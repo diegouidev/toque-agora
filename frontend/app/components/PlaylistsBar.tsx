@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { PlaylistSummary } from "../lib/api";
-import { HeartIcon, PlayIcon, PlusIcon, ShareIcon } from "./icons";
+import { EditIcon, HeartIcon, PlayIcon, PlusIcon, ShareIcon } from "./icons";
 
 interface Props {
   playlists: PlaylistSummary[];
@@ -13,6 +13,7 @@ interface Props {
   onOpenPlaylist: (pl: PlaylistSummary) => void;
   onOpenShared?: (pl: PlaylistSummary) => void;
   onShare?: (pl: PlaylistSummary) => void;
+  onRename?: (pl: PlaylistSummary) => void;
   onCreate: (name: string) => void;
   onDelete: (pl: PlaylistSummary) => void;
 }
@@ -26,6 +27,7 @@ export default function PlaylistsBar({
   onOpenPlaylist,
   onOpenShared,
   onShare,
+  onRename,
   onCreate,
   onDelete,
 }: Props) {
@@ -94,6 +96,16 @@ export default function PlaylistsBar({
               {pl.name}
               <span className="opacity-70">{pl.track_count}</span>
             </button>
+            {onRename && (
+              <button
+                onClick={() => onRename(pl)}
+                className="opacity-0 transition group-hover:opacity-100 hover:text-accent"
+                aria-label="Renomear playlist"
+                title="Renomear"
+              >
+                <EditIcon className="h-3.5 w-3.5" />
+              </button>
+            )}
             {onShare && (
               <button
                 onClick={() => onShare(pl)}

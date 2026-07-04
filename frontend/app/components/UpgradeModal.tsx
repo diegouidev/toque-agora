@@ -1,6 +1,7 @@
 "use client";
 
 import { type QuotaExceeded, whatsappUpgradeUrl } from "../lib/api";
+import { useEscClose } from "../lib/useEscClose";
 
 interface Props {
   info: QuotaExceeded;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function UpgradeModal({ info, email, onClose }: Props) {
+  useEscClose(onClose);
   const hasWhats = !!info.whatsapp;
   const url = hasWhats
     ? whatsappUpgradeUrl(info.whatsapp, email, info.used_gb, info.quota_gb)
@@ -20,6 +22,9 @@ export default function UpgradeModal({ info, email, onClose }: Props) {
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Espaço cheio"
         className="w-full max-w-sm space-y-4 rounded-2xl border border-white/10 bg-surface p-6 text-center shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

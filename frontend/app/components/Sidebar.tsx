@@ -4,6 +4,7 @@ import { useState } from "react";
 import { avatarUrl, type Me, type PlaylistSummary } from "../lib/api";
 import QuotaBar from "./QuotaBar";
 import {
+  EditIcon,
   HeartIcon,
   HomeIcon,
   LibraryIcon,
@@ -28,6 +29,7 @@ interface Props {
   onOpenPlaylist: (pl: PlaylistSummary) => void;
   onOpenShared: (pl: PlaylistSummary) => void;
   onShare: (pl: PlaylistSummary) => void;
+  onRename?: (pl: PlaylistSummary) => void;
   onCreate: (name: string) => void;
   onDelete: (pl: PlaylistSummary) => void;
   onUpload: () => void;
@@ -55,6 +57,7 @@ export default function Sidebar({
   onOpenPlaylist,
   onOpenShared,
   onShare,
+  onRename,
   onCreate,
   onDelete,
   onUpload,
@@ -178,6 +181,16 @@ export default function Sidebar({
                 <span className="truncate">{pl.name}</span>
                 <span className="ml-auto text-xs text-zinc-500">{pl.track_count}</span>
               </button>
+              {onRename && (
+                <button
+                  onClick={() => onRename(pl)}
+                  className="shrink-0 text-zinc-500 opacity-0 transition group-hover:opacity-100 hover:text-accent"
+                  aria-label="Renomear playlist"
+                  title="Renomear"
+                >
+                  <EditIcon className="h-3.5 w-3.5" />
+                </button>
+              )}
               <button
                 onClick={() => onShare(pl)}
                 className="shrink-0 text-zinc-500 opacity-0 transition group-hover:opacity-100 hover:text-accent"

@@ -155,6 +155,25 @@ async def _owned_playlist(playlist_id: int, user: User, session: AsyncSession) -
     return pl
 
 
+@router.patch("/playlists/{playlist_id}", response_model=PlaylistSummary)
+async def rename_playlist(
+    playlist_id: int,
+    body: PlaylistCreate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> PlaylistSummary:
+    """Renomeia uma playlist (só o dono)."""
+    pl = await _owned_playlist(playlist_id, user, session)
+    pl.name = body.name.strip()
+    await session.commit()
+    count = await session.scalar(
+        select(func.count(PlaylistItem.id)).where(
+            PlaylistItem.playlist_id == playlist_id
+        )
+    )
+    return PlaylistSummary(id=pl.id, name=pl.name, track_count=int(count or 0))
+
+
 async def _shared_with(playlist_id: int, user_id: int, session: AsyncSession) -> bool:
     res = await session.execute(
         select(PlaylistShare.id).where(

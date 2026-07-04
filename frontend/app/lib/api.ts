@@ -506,6 +506,19 @@ export async function createPlaylist(name: string): Promise<PlaylistSummary> {
   return res.json();
 }
 
+export async function renamePlaylist(
+  id: number,
+  name: string,
+): Promise<PlaylistSummary> {
+  const res = await apiFetch(`/api/playlists/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Falha ao renomear playlist");
+  return res.json();
+}
+
 export async function deletePlaylist(id: number): Promise<void> {
   const res = await apiFetch(`/api/playlists/${id}`, { method: "DELETE" });
   if (!res.ok && res.status !== 204) throw new Error("Falha ao excluir playlist");

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { PlaylistSummary, Track } from "../lib/api";
+import { useEscClose } from "../lib/useEscClose";
 
 interface Props {
   track: Track;
@@ -19,6 +20,7 @@ export default function AddToPlaylistModal({
   onClose,
 }: Props) {
   const [name, setName] = useState("");
+  useEscClose(onClose);
 
   return (
     <div
@@ -26,6 +28,9 @@ export default function AddToPlaylistModal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Adicionar a playlist"
         className="w-full max-w-sm space-y-4 rounded-2xl border border-white/10 bg-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

@@ -5,7 +5,7 @@
  *  - API e stream de áudio (/api/...): network-only, NUNCA cacheados.
  * Aumente a versão do cache para invalidar em deploys.
  */
-const CACHE = "toque-agora-v1";
+const CACHE = "toque-agora-v2";
 const APP_SHELL = "/";
 const PRECACHE = [
   "/",

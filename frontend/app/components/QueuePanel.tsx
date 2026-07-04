@@ -1,6 +1,7 @@
 "use client";
 
 import type { Track } from "../lib/api";
+import { useEscClose } from "../lib/useEscClose";
 import TrackList from "./TrackList";
 import { CloseIcon } from "./icons";
 
@@ -26,9 +27,13 @@ export default function QueuePanel({
   onRemoveFromQueue,
   onClose,
 }: Props) {
+  useEscClose(onClose);
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Fila de reprodução"
         className="flex h-full w-full max-w-md flex-col border-l border-white/10 bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fetchPublicCds, publicCoverUrl, type PublicCd } from "../lib/api";
+import { BandGridSkeleton } from "../components/Skeleton";
 import { MusicIcon } from "../components/icons";
 
 export default function NovidadesPage() {
@@ -73,7 +74,7 @@ export default function NovidadesPage() {
         )}
 
         {loading ? (
-          <p className="py-16 text-center text-sm text-zinc-500">Carregando…</p>
+          <BandGridSkeleton count={8} />
         ) : shown.length === 0 ? (
           <p className="py-16 text-center text-sm text-zinc-500">
             {cds.length === 0

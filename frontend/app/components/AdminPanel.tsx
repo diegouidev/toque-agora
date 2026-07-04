@@ -26,6 +26,8 @@ import {
 } from "../lib/api";
 import AsaasConfig from "./AsaasConfig";
 import PlansManager from "./PlansManager";
+import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
 
 const GB = 1024 * 1024 * 1024;
 
@@ -50,6 +52,8 @@ export default function AdminPanel({
   onClose: () => void;
   asPage?: boolean;
 }) {
+  const toast = useToast();
+  const dialog = useDialog();
   const [data, setData] = useState<AdminOverview | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -75,23 +79,40 @@ export default function AdminPanel({
       await createCategory(newCat.trim());
       setNewCat("");
       loadCats();
+      toast.success("Categoria criada.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Falha ao criar categoria");
+      toast.error(err instanceof Error ? err.message : "Falha ao criar categoria");
     }
   }
   async function removeCat(c: Category) {
-    if (!confirm(`Excluir a categoria "${c.name}"? Os CDs perdem essa marcação.`)) return;
-    await deleteCategory(c.id);
-    loadCats();
+    const ok = await dialog.confirm({
+      title: `Excluir a categoria "${c.name}"?`,
+      message: "Os CDs perdem essa marcação.",
+      confirmLabel: "Excluir",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteCategory(c.id);
+      loadCats();
+      toast.success("Categoria excluída.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao excluir categoria");
+    }
   }
   async function editCat(c: Category) {
-    const name = prompt("Novo nome da categoria:", c.name);
-    if (name == null || !name.trim() || name.trim() === c.name) return;
+    const name = await dialog.prompt({
+      title: "Renomear categoria",
+      defaultValue: c.name,
+      confirmLabel: "Salvar",
+    });
+    if (name == null || name === c.name) return;
     try {
-      await renameCategory(c.id, name.trim());
+      await renameCategory(c.id, name);
       loadCats();
+      toast.success("Categoria renomeada.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Falha ao renomear categoria");
+      toast.error(err instanceof Error ? err.message : "Falha ao renomear categoria");
     }
   }
 
@@ -139,50 +160,78 @@ export default function AdminPanel({
   }
 
   async function changeQuota(u: AdminUserStat) {
-    const val = prompt(
-      `Nova quota total (GB) para ${u.email}:`,
-      String(Math.round(u.quota_bytes / GB)),
-    );
+    const val = await dialog.prompt({
+      title: `Quota de ${u.email}`,
+      message: "Nova quota total, em GB.",
+      defaultValue: String(Math.round(u.quota_bytes / GB)),
+      confirmLabel: "Salvar",
+    });
     if (val == null) return;
     const gb = Number(val);
-    if (!gb || gb <= 0) return;
-    await updateUserQuota(u.id, gb);
-    load();
+    if (!gb || gb <= 0) {
+      toast.error("Informe um número de GB válido.");
+      return;
+    }
+    try {
+      await updateUserQuota(u.id, gb);
+      load();
+      toast.success("Quota atualizada.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao atualizar a quota");
+    }
   }
 
   async function remove(u: AdminUserStat) {
-    if (!confirm(`Excluir o usuário ${u.email}? As coleções dele serão removidas.`)) return;
+    const ok = await dialog.confirm({
+      title: `Excluir o usuário ${u.email}?`,
+      message: "As coleções dele serão removidas. Esta ação não pode ser desfeita.",
+      confirmLabel: "Excluir",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await deleteUser(u.id);
       load();
+      toast.success("Usuário excluído.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Falha ao excluir");
+      toast.error(err instanceof Error ? err.message : "Falha ao excluir");
     }
   }
 
   async function toggleBlock(u: AdminUserStat) {
     const block = u.is_active; // se está ativo, vamos bloquear
-    if (!confirm(`${block ? "Bloquear" : "Desbloquear"} o login de ${u.email}?`)) return;
+    const ok = await dialog.confirm({
+      title: `${block ? "Bloquear" : "Desbloquear"} o login de ${u.email}?`,
+      confirmLabel: block ? "Bloquear" : "Desbloquear",
+      danger: block,
+    });
+    if (!ok) return;
     try {
       await setUserBlocked(u.id, block);
       load();
+      toast.success(block ? "Usuário bloqueado." : "Usuário desbloqueado.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Falha");
+      toast.error(err instanceof Error ? err.message : "Falha");
     }
   }
 
   async function resetPassword(u: AdminUserStat) {
-    const pwd = prompt(`Nova senha para ${u.email} (mín. 8 caracteres):`);
+    const pwd = await dialog.prompt({
+      title: `Nova senha para ${u.email}`,
+      message: "Mínimo de 8 caracteres.",
+      placeholder: "Nova senha",
+      confirmLabel: "Redefinir",
+    });
     if (pwd == null) return;
     if (pwd.length < 8) {
-      alert("A senha precisa ter ao menos 8 caracteres.");
+      toast.error("A senha precisa ter ao menos 8 caracteres.");
       return;
     }
     try {
       await resetUserPassword(u.id, pwd);
-      alert("Senha redefinida.");
+      toast.success("Senha redefinida.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Falha");
+      toast.error(err instanceof Error ? err.message : "Falha");
     }
   }
 
@@ -190,23 +239,29 @@ export default function AdminPanel({
     try {
       await updateUser(u.id, { can_upload: !u.can_upload });
       load();
+      toast.success(
+        u.can_upload ? "Upload desativado para o usuário." : "Upload liberado para o usuário.",
+      );
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Falha");
+      toast.error(err instanceof Error ? err.message : "Falha");
     }
   }
 
   async function changePlan(u: AdminUserStat) {
     const opts = plans.map((p) => `${p.id}=${p.name}`).join(", ");
-    const val = prompt(
-      `Plano de ${u.email}. Digite o ID do plano (0 = sem plano).\nDisponíveis: ${opts || "nenhum"}`,
-      u.plan_id ? String(u.plan_id) : "0",
-    );
+    const val = await dialog.prompt({
+      title: `Plano de ${u.email}`,
+      message: `ID do plano (0 = sem plano). Disponíveis: ${opts || "nenhum"}`,
+      defaultValue: u.plan_id ? String(u.plan_id) : "0",
+      confirmLabel: "Salvar",
+    });
     if (val == null) return;
     try {
       await updateUser(u.id, { plan_id: Number(val) || 0 });
       load();
+      toast.success("Plano atualizado.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Falha");
+      toast.error(err instanceof Error ? err.message : "Falha");
     }
   }
 

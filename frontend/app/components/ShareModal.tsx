@@ -8,6 +8,7 @@ import {
   type PlaylistShareOut,
   type PlaylistSummary,
 } from "../lib/api";
+import { useEscClose } from "../lib/useEscClose";
 import { CloseIcon } from "./icons";
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export default function ShareModal({ playlist, onClose, onChanged }: Props) {
+  useEscClose(onClose);
   const [shares, setShares] = useState<PlaylistShareOut[]>([]);
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +71,9 @@ export default function ShareModal({ playlist, onClose, onChanged }: Props) {
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Compartilhar playlist"
         className="w-full max-w-sm space-y-4 rounded-2xl border border-white/10 bg-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

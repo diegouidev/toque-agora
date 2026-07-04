@@ -11,12 +11,16 @@ import {
   setPlanCategories,
   updatePlan,
 } from "../lib/api";
+import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
 
 function brl(cents: number): string {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 export default function PlansManager() {
+  const toast = useToast();
+  const dialog = useDialog();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [name, setName] = useState("");
@@ -47,19 +51,26 @@ export default function PlansManager() {
       setName("");
       setPrice("");
       load();
+      toast.success("Plano criado.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Falha ao criar plano");
+      toast.error(err instanceof Error ? err.message : "Falha ao criar plano");
     }
   }
 
   async function editPrice(plan: Plan) {
-    const val = prompt(`Preço mensal de "${plan.name}" (R$):`, String((plan.price_cents / 100).toFixed(2)).replace(".", ","));
+    const val = await dialog.prompt({
+      title: `Preço mensal de "${plan.name}"`,
+      message: "Valor em reais (ex.: 19,90).",
+      defaultValue: String((plan.price_cents / 100).toFixed(2)).replace(".", ","),
+      confirmLabel: "Salvar",
+    });
     if (val == null) return;
     try {
       await updatePlan(plan.id, plan.name, parsePrice(val));
       load();
+      toast.success("Preço atualizado.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Falha");
+      toast.error(err instanceof Error ? err.message : "Falha");
     }
   }
 
@@ -84,9 +95,20 @@ export default function PlansManager() {
   }
 
   async function remove(plan: Plan) {
-    if (!confirm(`Excluir o plano "${plan.name}"? Os usuários ficam sem plano.`)) return;
-    await deletePlan(plan.id);
-    load();
+    const ok = await dialog.confirm({
+      title: `Excluir o plano "${plan.name}"?`,
+      message: "Os usuários desse plano ficam sem plano.",
+      confirmLabel: "Excluir",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deletePlan(plan.id);
+      load();
+      toast.success("Plano excluído.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao excluir o plano");
+    }
   }
 
   return (
