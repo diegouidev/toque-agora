@@ -5,6 +5,7 @@ import { AuthProvider } from "./lib/auth-context";
 import ServiceWorkerRegister from "./components/ServiceWorkerRegister";
 import { ToastProvider } from "./components/Toast";
 import { DialogProvider } from "./components/Dialog";
+import { DownloadsProvider } from "./lib/downloads";
 
 const display = Montserrat({
   subsets: ["latin"],
@@ -52,7 +53,9 @@ export default function RootLayout({
         <ServiceWorkerRegister />
         <ToastProvider>
           <DialogProvider>
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider>
+              <DownloadsProvider>{children}</DownloadsProvider>
+            </AuthProvider>
           </DialogProvider>
         </ToastProvider>
       </body>

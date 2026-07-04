@@ -16,6 +16,7 @@ import QueuePanel from "./components/QueuePanel";
 import SearchView from "./components/SearchView";
 import ShareModal from "./components/ShareModal";
 import StatsModal from "./components/StatsModal";
+import DownloadsView from "./components/DownloadsView";
 import Sidebar, { type Tab } from "./components/Sidebar";
 import TrackList from "./components/TrackList";
 import UploadModal from "./components/UploadModal";
@@ -59,6 +60,7 @@ import {
   type UploadResult,
 } from "./lib/api";
 import { useAuth } from "./lib/auth-context";
+import { useDownloads } from "./lib/downloads";
 import { useToast } from "./components/Toast";
 import { useDialog } from "./components/Dialog";
 import { totalDurationLabel } from "./lib/format";
@@ -76,7 +78,8 @@ type View =
   | null;
 
 export default function Home() {
-  const { me, loading, logout, refresh } = useAuth();
+  const { me, loading, logout, refresh, offline } = useAuth();
+  const downloads = useDownloads();
   const toast = useToast();
   const dialog = useDialog();
 
@@ -111,6 +114,7 @@ export default function Home() {
   const router = useRouter();
   const [showProfile, setShowProfile] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showDownloads, setShowDownloads] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   // Categoria a pré-marcar no upload (null = upload genérico).
   const [uploadCategory, setUploadCategory] = useState<number | null>(null);
@@ -220,6 +224,11 @@ export default function Home() {
       markNewsSeen();
     }
   }, [tab, newsBands, newsSeen]);
+
+  // Sem internet: abre direto a tela de Baixados (é o que dá pra ouvir offline).
+  useEffect(() => {
+    if (offline) setShowDownloads(true);
+  }, [offline]);
 
   // Restaura a fila/posição salva ao abrir (uma vez, com play PAUSADO).
   useEffect(() => {
@@ -1100,6 +1109,7 @@ export default function Home() {
         onAdmin={() => router.push("/admin")}
         onProfile={() => setShowProfile(true)}
         onStats={() => setShowStats(true)}
+        onDownloads={() => setShowDownloads(true)}
         onLogout={logout}
       />
 
@@ -1134,6 +1144,13 @@ export default function Home() {
               📊
             </button>
             <button
+              onClick={() => setShowDownloads(true)}
+              className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
+              title="Baixados (offline)"
+            >
+              📥
+            </button>
+            <button
               onClick={() => setShowProfile(true)}
               className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-accent to-indigo-600 text-[10px] font-black"
               title="Meu perfil"
@@ -1157,6 +1174,22 @@ export default function Home() {
         </header>
 
         <div className="mx-auto max-w-5xl space-y-7 px-4 py-6 sm:px-6">
+          {(offline || downloads.blocked) && (
+            <button
+              onClick={() => setShowDownloads(true)}
+              className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm hover:bg-white/10"
+            >
+              <span className="text-lg">{offline ? "📴" : "🔒"}</span>
+              <span className="flex-1 text-zinc-200">
+                {offline
+                  ? "Você está sem internet — só as músicas baixadas tocam agora."
+                  : "Sua licença offline expirou — reconecte para liberar os downloads."}
+              </span>
+              <span className="shrink-0 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
+                Ver baixados
+              </span>
+            </button>
+          )}
           {showExpiryWarning && (
             <button
               onClick={() => onTab("subscribe")}
@@ -1254,6 +1287,14 @@ export default function Home() {
       )}
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
       {showStats && <StatsModal onClose={() => setShowStats(false)} />}
+      {showDownloads && (
+        <DownloadsView
+          onClose={() => setShowDownloads(false)}
+          onPlay={(list, i) => startQueue(list, i)}
+          currentTrackId={currentTrack?.id ?? null}
+          isPlaying={isPlaying}
+        />
+      )}
       {quotaInfo && (
         <UpgradeModal info={quotaInfo} email={me.email} onClose={() => setQuotaInfo(null)} />
       )}

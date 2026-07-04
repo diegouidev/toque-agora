@@ -15,6 +15,7 @@ from .routers import (
     cd_favorites,
     history,
     news,
+    offline,
     plans,
     playlists,
     profile,
@@ -106,6 +107,7 @@ app.include_router(radio.router)
 app.include_router(cd_favorites.router)
 app.include_router(news.router)
 app.include_router(recommendations.router)
+app.include_router(offline.router)
 app.include_router(public.router)
 app.include_router(stream.router)
 

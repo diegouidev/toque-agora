@@ -51,7 +51,18 @@ class Settings(BaseSettings):
     # Auto-cadastro público (vitrine). Desligue para travar o registro.
     public_signup_enabled: bool = True
 
+    # ----- Offline (DRM leve) -----
+    # Segredo para derivar a chave de criptografia dos downloads offline.
+    # Vazio = usa o jwt_secret como base. Trocá-lo invalida todos os downloads.
+    offline_secret: str = ""
+    # Dias que uma licença offline vale sem reconexão (renova ao abrir online).
+    offline_license_ttl_days: int = 30
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def offline_key_base(self) -> str:
+        return self.offline_secret or self.jwt_secret
 
     @property
     def cors_origins_list(self) -> list[str]:

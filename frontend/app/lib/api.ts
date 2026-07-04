@@ -187,6 +187,42 @@ export async function fetchMe(): Promise<Me> {
   return res.json();
 }
 
+// Cache do usuário para o app abrir OFFLINE (renderizar o player sem rede).
+const ME_CACHE_KEY = "ta_me_cache";
+export function cacheMe(me: Me): void {
+  try {
+    localStorage.setItem(ME_CACHE_KEY, JSON.stringify(me));
+  } catch {
+    /* ignore */
+  }
+}
+export function getCachedMe(): Me | null {
+  try {
+    const raw = localStorage.getItem(ME_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as Me) : null;
+  } catch {
+    return null;
+  }
+}
+export function clearCachedMe(): void {
+  try {
+    localStorage.removeItem(ME_CACHE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+// ---------- Licença offline (DRM leve) ----------
+export interface OfflineLicense {
+  key: string;
+  expires_at: string;
+}
+export async function fetchOfflineLicense(): Promise<OfflineLicense> {
+  const res = await apiFetch("/api/offline/license");
+  if (!res.ok) throw new Error("Sem licença offline");
+  return res.json();
+}
+
 // ---------- Coleção ----------
 export function streamUrl(trackId: number): string {
   return `${API_URL}/api/stream/${trackId}`;

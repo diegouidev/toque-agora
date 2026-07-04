@@ -2,11 +2,14 @@
 
 import { useRef, useState } from "react";
 import type { Track } from "../lib/api";
+import { useDownloads } from "../lib/downloads";
+import { useToast } from "./Toast";
 import {
   DownloadIcon,
   DragIcon,
   EditIcon,
   HeartIcon,
+  OfflineIcon,
   PlayIcon,
   PlusIcon,
   QueueIcon,
@@ -46,6 +49,23 @@ export default function TrackList({
   onReorder,
   onDownload,
 }: Props) {
+  const dl = useDownloads();
+  const toast = useToast();
+
+  async function toggleOffline(track: Track) {
+    if (dl.isDownloaded(track.id)) {
+      await dl.remove(track.id);
+      toast.info("Download removido.");
+      return;
+    }
+    try {
+      await dl.download(track);
+      toast.success("Baixado para ouvir offline.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao baixar.");
+    }
+  }
+
   // Drag-and-drop com Pointer Events (funciona no MOUSE e no TOQUE — o HTML5
   // drag nativo não dispara em telas de toque). Estado para o visual; refs para
   // a lógica (evita closure obsoleto dentro dos handlers de ponteiro).
@@ -203,6 +223,39 @@ export default function TrackList({
                   title="Adicionar a playlist"
                 >
                   <PlusIcon className="h-4 w-4" />
+                </button>
+              )}
+
+              {/* Baixar para offline (assinante com licença) */}
+              {dl.licenseValid && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleOffline(track);
+                  }}
+                  disabled={dl.busy.has(track.id)}
+                  className={`shrink-0 p-1 transition ${
+                    dl.isDownloaded(track.id)
+                      ? "text-accent"
+                      : "text-zinc-500 opacity-0 hover:text-white group-hover:opacity-100"
+                  } ${dl.busy.has(track.id) ? "animate-pulse opacity-100" : ""}`}
+                  aria-label={
+                    dl.isDownloaded(track.id)
+                      ? "Remover download offline"
+                      : "Baixar para ouvir offline"
+                  }
+                  title={
+                    dl.busy.has(track.id)
+                      ? "Baixando…"
+                      : dl.isDownloaded(track.id)
+                        ? "Baixado (clique para remover)"
+                        : "Baixar para ouvir offline"
+                  }
+                >
+                  <OfflineIcon
+                    className="h-4 w-4"
+                    done={dl.isDownloaded(track.id)}
+                  />
                 </button>
               )}
 

@@ -331,6 +331,35 @@ export function DownloadIcon({ className }: IconProps) {
   );
 }
 
+export function OfflineIcon({
+  className,
+  done,
+}: IconProps & { done?: boolean }) {
+  // Seta para baixo dentro de um "aparelho" (baixar para o dispositivo).
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="6" y="3" width="12" height="18" rx="2" />
+      {done ? (
+        <path d="m9 12 2 2 4-4" />
+      ) : (
+        <>
+          <path d="M12 8v6" />
+          <path d="m9.5 11.5 2.5 2.5 2.5-2.5" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function VolumeIcon({ className, muted }: IconProps & { muted?: boolean }) {
   return (
     <svg

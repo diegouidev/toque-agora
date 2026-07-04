@@ -36,6 +36,7 @@ interface Props {
   onAdmin: () => void;
   onProfile: () => void;
   onStats?: () => void;
+  onDownloads?: () => void;
   onLogout: () => void;
 }
 
@@ -65,6 +66,7 @@ export default function Sidebar({
   onAdmin,
   onProfile,
   onStats,
+  onDownloads,
   onLogout,
 }: Props) {
   const [creating, setCreating] = useState(false);
@@ -274,6 +276,14 @@ export default function Sidebar({
             className="flex w-full items-center justify-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
           >
             📊 Minha retrospectiva
+          </button>
+        )}
+        {onDownloads && (
+          <button
+            onClick={onDownloads}
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
+          >
+            📥 Baixados (offline)
           </button>
         )}
         <div className="flex items-center gap-2">

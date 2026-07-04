@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { coverUrl, recordPlay, streamUrl, type Track } from "../lib/api";
 import { gradientFor } from "../lib/covers";
+import { useDownloads } from "../lib/downloads";
 import {
   BroomIcon,
   ChevronDownIcon,
@@ -82,6 +83,7 @@ export default function PlayerBar({
   resumeTime,
   onTime,
 }: Props) {
+  const { getOfflineUrl } = useDownloads();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -253,31 +255,48 @@ export default function PlayerBar({
     onEnded();
   }
 
-  // Troca de faixa → novo src (dispara o streaming).
+  // Troca de faixa → novo src. Usa o arquivo OFFLINE decifrado se a faixa foi
+  // baixada (toca sem rede); senão, streaming. É assíncrono por causa da
+  // decifragem, então guardamos/revogamos o objectURL ao trocar.
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !track) return;
-    audio.src = streamUrl(track.id);
-    audio.load();
-    audio.playbackRate = speed; // playbackRate reseta ao trocar o src
-    // Com crossfade, começa mudo (o onTimeUpdate faz o fade-in).
-    audio.volume = crossfade ? 0 : volume;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
     const resume = pendingResume.current;
     pendingResume.current = null; // só vale para a 1ª faixa (restaurada)
     consumedResume.current = true;
     setCurrent(resume ?? 0);
     setDuration(0);
-    if (resume && resume > 0) {
-      // Aplica o seek assim que os metadados carregarem.
-      const onMeta = () => {
-        audio.currentTime = resume;
-        audio.removeEventListener("loadedmetadata", onMeta);
-      };
-      audio.addEventListener("loadedmetadata", onMeta);
-    }
-    if (isPlaying) audio.play().catch(() => {});
-    // Não registra play em faixa apenas restaurada (pausada); só ao tocar de fato.
-    if (resume == null) recordPlay(track.id);
+
+    (async () => {
+      const offline = await getOfflineUrl(track.id).catch(() => null);
+      if (cancelled) {
+        if (offline) URL.revokeObjectURL(offline);
+        return;
+      }
+      objectUrl = offline;
+      audio.src = offline ?? streamUrl(track.id);
+      audio.load();
+      audio.playbackRate = speed; // playbackRate reseta ao trocar o src
+      audio.volume = crossfade ? 0 : volume;
+      if (resume && resume > 0) {
+        const onMeta = () => {
+          audio.currentTime = resume;
+          audio.removeEventListener("loadedmetadata", onMeta);
+        };
+        audio.addEventListener("loadedmetadata", onMeta);
+      }
+      if (isPlaying) audio.play().catch(() => {});
+      // Não registra play em faixa restaurada (pausada) nem offline.
+      if (resume == null && offline == null) recordPlay(track.id);
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.id]);
 
