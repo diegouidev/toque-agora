@@ -417,6 +417,43 @@ export function CloseIcon({ className }: IconProps) {
   );
 }
 
+export function CarIcon({ className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11" />
+      <path d="M3 16v-3a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a1 1 0 0 1-1 1h-1a2 2 0 0 1-4 0H8a2 2 0 0 1-4 0H3a0 0 0 0 1 0 0Z" />
+      <path d="M7 14h.01M17 14h.01" />
+    </svg>
+  );
+}
+
+export function EqIcon({ className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M6 4v6M6 14v6M12 4v3M12 11v9M18 4v9M18 17v3" />
+      <path d="M4 12h4M10 9h4M16 15h4" />
+    </svg>
+  );
+}
+
 export function MoreIcon({ className }: IconProps) {
   // Três pontos verticais (menu de ações "⋮").
   return (

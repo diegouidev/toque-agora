@@ -15,6 +15,7 @@ import {
   PlayIcon,
   PlusIcon,
   QueueIcon,
+  ShareIcon,
 } from "./icons";
 
 interface Props {
@@ -29,6 +30,7 @@ interface Props {
   onRemove?: (track: Track) => void; // contexto de playlist
   onReorder?: (newOrder: Track[]) => void; // habilita drag-and-drop (playlist)
   onDownload?: (track: Track) => void; // baixar MP3 (dono/admin)
+  onShare?: (track: Track) => void; // compartilhar o CD da faixa
 }
 
 function fmtDuration(sec: number): string {
@@ -50,6 +52,7 @@ export default function TrackList({
   onRemove,
   onReorder,
   onDownload,
+  onShare,
 }: Props) {
   const dl = useDownloads();
   const toast = useToast();
@@ -91,8 +94,15 @@ export default function TrackList({
   const closeMenu = () => setMenuTrack(null);
 
   const hasMenu = (t: Track): boolean =>
-    !!(onAddToPlaylist || onPlayNext || dl.licenseValid || onDownload || onRename || onRemove) &&
-    !!t;
+    !!(
+      onAddToPlaylist ||
+      onPlayNext ||
+      dl.licenseValid ||
+      onDownload ||
+      onRename ||
+      onRemove ||
+      onShare
+    ) && !!t;
 
   // Drag-and-drop com Pointer Events (funciona no MOUSE e no TOQUE — o HTML5
   // drag nativo não dispara em telas de toque). Estado para o visual; refs para
@@ -273,6 +283,16 @@ export default function TrackList({
                 label="Adicionar à playlist"
                 onClick={() => {
                   onAddToPlaylist(menuTrack);
+                  closeMenu();
+                }}
+              />
+            )}
+            {onShare && (
+              <MenuItem
+                icon={<ShareIcon className="h-4 w-4 text-zinc-400" />}
+                label="Compartilhar CD"
+                onClick={() => {
+                  onShare(menuTrack);
                   closeMenu();
                 }}
               />

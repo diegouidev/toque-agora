@@ -27,6 +27,7 @@ import {
   MenuIcon,
   MusicIcon,
   PlayIcon,
+  ShareIcon,
   UploadIcon,
 } from "./components/icons";
 import {
@@ -68,6 +69,7 @@ import {
 } from "./lib/api";
 import { useAuth } from "./lib/auth-context";
 import { useDownloads } from "./lib/downloads";
+import { shareOrCopy } from "./lib/share";
 import { useToast } from "./components/Toast";
 import { useDialog } from "./components/Dialog";
 import { totalDurationLabel } from "./lib/format";
@@ -360,6 +362,14 @@ export default function Home() {
     } catch {
       toast.error("Falha ao renomear a banda.");
     }
+  }
+
+  // Compartilhar o link público do CD (marketing orgânico). Faixa → link do CD.
+  async function shareCd(bandId: number, title: string) {
+    const url = `${window.location.origin}/cd/${bandId}`;
+    const r = await shareOrCopy(url, title);
+    if (r === "copied") toast.success("Link copiado!");
+    else if (r === "failed") toast.error("Não foi possível compartilhar.");
   }
 
   async function onToggleBandFav(band: BandSummary) {
@@ -855,6 +865,16 @@ export default function Home() {
                 >
                   <HeartIcon className="h-5 w-5" filled={view.band.is_favorite} />
                 </button>
+                {!view.band.is_hidden && (
+                  <button
+                    onClick={() => shareCd(view.band.id, view.band.name)}
+                    className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-zinc-300 transition-colors hover:text-white"
+                    aria-label="Compartilhar CD"
+                    title="Compartilhar CD"
+                  >
+                    <ShareIcon className="h-5 w-5" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -908,6 +928,7 @@ export default function Home() {
               ? onDownloadTrack
               : undefined
           }
+          onShare={(t) => shareCd(t.band_id, t.display_name)}
         />
       </div>
     </section>

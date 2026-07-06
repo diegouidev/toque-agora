@@ -7,8 +7,10 @@ import { useDownloads } from "../lib/downloads";
 import Marquee from "./Marquee";
 import {
   BroomIcon,
+  CarIcon,
   ChevronDownIcon,
   ClockIcon,
+  EqIcon,
   HeartIcon,
   MusicIcon,
   NextIcon,
@@ -21,6 +23,16 @@ import {
   ShuffleIcon,
   VolumeIcon,
 } from "./icons";
+
+// Bandas do equalizer (Hz) e presets (ganho em dB por banda).
+const EQ_BANDS = [60, 250, 1000, 4000, 12000];
+const EQ_PRESETS: Record<string, number[]> = {
+  Normal: [0, 0, 0, 0, 0],
+  Grave: [6, 4, 1, 0, -1],
+  Vocal: [-2, 0, 4, 3, 0],
+  Agudo: [-2, -1, 0, 4, 6],
+  Festa: [5, 2, 0, 3, 5],
+};
 
 interface Props {
   track: Track | null;
@@ -117,6 +129,14 @@ export default function PlayerBar({
   // Velocidade de reprodução (1 = normal), persistida.
   const [speed, setSpeed] = useState(1);
   const [speedMenu, setSpeedMenu] = useState(false);
+  // Modo carro (botões grandes) e Equalizer.
+  const [carMode, setCarMode] = useState(false);
+  const [eqOpen, setEqOpen] = useState(false);
+  const [eqGains, setEqGains] = useState<number[]>(() => EQ_BANDS.map(() => 0));
+  // Grafo Web Audio (criado sob demanda, na 1ª vez que o EQ é usado).
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
+  const eqBuiltRef = useRef(false);
 
   // Gestos de toque no Now Playing: swipe p/ baixo fecha; horizontal troca faixa.
   const touchStart = useRef<{ x: number; y: number } | null>(null);
@@ -139,6 +159,33 @@ export default function PlayerBar({
       if (dx < 0 && hasNext) onNext();
       else if (dx > 0 && hasPrev) onPrev();
     }
+  }
+
+  // Gestos no mini-player: swipe ↑ abre o Now Playing; ← → troca de faixa.
+  const miniTouch = useRef<{ x: number; y: number } | null>(null);
+  const swipedRef = useRef(false);
+  function onMiniTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    miniTouch.current = { x: t.clientX, y: t.clientY };
+  }
+  function onMiniTouchEnd(e: React.TouchEvent) {
+    const s = miniTouch.current;
+    miniTouch.current = null;
+    if (!s) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - s.x;
+    const dy = t.clientY - s.y;
+    const ax = Math.abs(dx);
+    const ay = Math.abs(dy);
+    if (ay > 50 && ay > ax && dy < 0) {
+      swipedRef.current = true;
+      setExpanded(true);
+    } else if (ax > 60 && ax > ay) {
+      swipedRef.current = true;
+      if (dx < 0 && hasNext) onNext();
+      else if (dx > 0 && hasPrev) onPrev();
+    }
+    if (swipedRef.current) setTimeout(() => (swipedRef.current = false), 400);
   }
 
   // Ref de isPlaying para uso dentro de timeouts (evita closure obsoleto).
@@ -179,6 +226,79 @@ export default function PlayerBar({
       /* ignore */
     }
   }, [speed]);
+
+  // ---- Equalizer (Web Audio) ----
+  // Carrega os ganhos salvos uma vez.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("ta_eq");
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr) && arr.length === EQ_BANDS.length) setEqGains(arr);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Cria o grafo (source → filtros peaking → destino) na 1ª vez que o EQ é usado.
+  // O MediaElementSource só pode ser criado UMA vez por elemento <audio>.
+  function buildEqGraph() {
+    const audio = audioRef.current;
+    if (eqBuiltRef.current || !audio) return;
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      const ctx = new Ctx();
+      const source = ctx.createMediaElementSource(audio);
+      const filters = EQ_BANDS.map((freq, i) => {
+        const f = ctx.createBiquadFilter();
+        f.type = "peaking";
+        f.frequency.value = freq;
+        f.Q.value = 1;
+        f.gain.value = eqGains[i] ?? 0;
+        return f;
+      });
+      // Encadeia source → f0 → f1 → ... → destino.
+      let node: AudioNode = source;
+      for (const f of filters) {
+        node.connect(f);
+        node = f;
+      }
+      node.connect(ctx.destination);
+      audioCtxRef.current = ctx;
+      eqFiltersRef.current = filters;
+      eqBuiltRef.current = true;
+    } catch {
+      // Se falhar (ex.: fonte cross-origin), o áudio segue tocando normalmente.
+    }
+  }
+
+  function applyEqGains(gains: number[]) {
+    setEqGains(gains);
+    try {
+      localStorage.setItem("ta_eq", JSON.stringify(gains));
+    } catch {
+      /* ignore */
+    }
+    eqFiltersRef.current.forEach((f, i) => {
+      f.gain.value = gains[i] ?? 0;
+    });
+  }
+
+  function openEq() {
+    buildEqGraph();
+    // AudioContext começa "suspended"; retoma no gesto do usuário.
+    audioCtxRef.current?.resume().catch(() => {});
+    // Garante que os filtros reflitam os ganhos atuais.
+    eqFiltersRef.current.forEach((f, i) => {
+      f.gain.value = eqGains[i] ?? 0;
+    });
+    setEqOpen(true);
+  }
 
   // Carrega e persiste o crossfade.
   useEffect(() => {
@@ -406,6 +526,10 @@ export default function PlayerBar({
           // acontecer antes do áudio estar pronto. Quando o áudio fica pronto
           // (canplay) e a intenção é tocar, garantimos o play aqui.
           e.currentTarget.playbackRate = speed; // garante a velocidade após carregar
+          // Se o EQ está ativo, garante o AudioContext rodando (iOS suspende em background).
+          if (audioCtxRef.current?.state === "suspended") {
+            audioCtxRef.current.resume().catch(() => {});
+          }
           if (isPlaying && e.currentTarget.paused) {
             e.currentTarget.play().catch(() => {});
           }
@@ -418,9 +542,14 @@ export default function PlayerBar({
       {/* lg:left-64 = não cobre o sidebar (Admin/Sair ficam clicáveis no desktop). */}
       <footer className="fixed inset-x-0 bottom-[57px] z-30 border-t border-white/10 bg-black/90 backdrop-blur-xl lg:bottom-0 lg:left-64 lg:pb-[env(safe-area-inset-bottom)]">
         <div className="flex w-full items-center gap-3 px-4 py-2.5">
-          {/* Capa + título: abre o Now Playing */}
+          {/* Capa + título: abre o Now Playing (toque) · swipe ↑ / ← → (gestos) */}
           <button
-            onClick={() => setExpanded(true)}
+            onClick={() => {
+              if (swipedRef.current) return; // ignora o clique após um swipe
+              setExpanded(true);
+            }}
+            onTouchStart={onMiniTouchStart}
+            onTouchEnd={onMiniTouchEnd}
             className="flex min-w-0 flex-1 items-center gap-3 text-left"
             aria-label="Abrir player"
           >
@@ -542,14 +671,32 @@ export default function PlayerBar({
               active
               className="min-w-0 flex-1 px-3 text-center text-sm font-semibold"
             />
-            <button
-              onClick={onOpenQueue}
-              aria-label="Fila"
-              title="Fila"
-              className="rounded-full p-1 active:scale-90"
-            >
-              <QueueIcon className="h-6 w-6" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={openEq}
+                aria-label="Equalizador"
+                title="Equalizador"
+                className="rounded-full p-1 active:scale-90"
+              >
+                <EqIcon className="h-6 w-6" />
+              </button>
+              <button
+                onClick={() => setCarMode(true)}
+                aria-label="Modo carro"
+                title="Modo carro"
+                className="rounded-full p-1 active:scale-90"
+              >
+                <CarIcon className="h-6 w-6" />
+              </button>
+              <button
+                onClick={onOpenQueue}
+                aria-label="Fila"
+                title="Fila"
+                className="rounded-full p-1 active:scale-90"
+              >
+                <QueueIcon className="h-6 w-6" />
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-1 flex-col justify-center gap-6 px-7">
@@ -768,6 +915,144 @@ export default function PlayerBar({
             </div>
           </div>
           <div className="h-[max(1.5rem,env(safe-area-inset-bottom))]" />
+        </div>
+      )}
+
+      {/* ----- Modo carro (botões grandes, alto contraste) ----- */}
+      {carMode && (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-black text-white">
+          <div className="flex items-center justify-between px-6 pt-[max(1rem,env(safe-area-inset-top))]">
+            <span className="text-sm font-semibold uppercase tracking-wider text-zinc-500">
+              Modo carro
+            </span>
+            <button
+              onClick={() => setCarMode(false)}
+              className="rounded-full bg-white/10 px-6 py-3 text-base font-bold active:scale-95"
+            >
+              Sair
+            </button>
+          </div>
+          <div className="flex flex-1 flex-col items-center justify-center gap-10 px-6">
+            <div className="h-44 w-44 overflow-hidden rounded-3xl bg-white/10 shadow-2xl">
+              {coverImg ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={coverImg} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <div className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${grad}`}>
+                  <MusicIcon className="h-20 w-20 text-white/85" />
+                </div>
+              )}
+            </div>
+            <div className="w-full max-w-md text-center">
+              <Marquee text={track.display_name} active className="text-3xl font-black" />
+              <Marquee text={bandName ?? "—"} active className="mt-2 text-xl text-zinc-400" />
+            </div>
+            <div className="flex w-full max-w-md items-center justify-center gap-6">
+              <button
+                onClick={onPrev}
+                disabled={!hasPrev}
+                className="flex h-20 w-20 items-center justify-center rounded-full bg-white/10 active:scale-95 disabled:opacity-30"
+                aria-label="Anterior"
+              >
+                <PrevIcon className="h-10 w-10" />
+              </button>
+              <button
+                onClick={onTogglePlay}
+                className="flex h-28 w-28 items-center justify-center rounded-full bg-white text-black shadow-xl active:scale-95"
+                aria-label={isPlaying ? "Pausar" : "Tocar"}
+              >
+                {isPlaying ? (
+                  <PauseIcon className="h-14 w-14" />
+                ) : (
+                  <PlayIcon className="ml-2 h-14 w-14" />
+                )}
+              </button>
+              <button
+                onClick={onNext}
+                disabled={!hasNext}
+                className="flex h-20 w-20 items-center justify-center rounded-full bg-white/10 active:scale-95 disabled:opacity-30"
+                aria-label="Próxima"
+              >
+                <NextIcon className="h-10 w-10" />
+              </button>
+            </div>
+          </div>
+          <div className="h-[max(1.5rem,env(safe-area-inset-bottom))]" />
+        </div>
+      )}
+
+      {/* ----- Equalizador (bottom sheet) ----- */}
+      {eqOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setEqOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Equalizador"
+            className="w-full max-w-md space-y-4 rounded-t-3xl border-t border-white/10 bg-surface p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold">Equalizador</h2>
+              <button
+                onClick={() => setEqOpen(false)}
+                className="text-zinc-400 hover:text-white"
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Presets */}
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(EQ_PRESETS).map(([name, gains]) => {
+                const on = gains.every((g, i) => g === eqGains[i]);
+                return (
+                  <button
+                    key={name}
+                    onClick={() => applyEqGains(gains)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                      on ? "bg-accent text-black" : "bg-white/10 text-zinc-200 hover:bg-white/20"
+                    }`}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Bandas */}
+            <div className="space-y-3">
+              {EQ_BANDS.map((freq, i) => (
+                <div key={freq} className="flex items-center gap-3">
+                  <span className="w-11 shrink-0 text-right text-xs tabular-nums text-zinc-400">
+                    {freq >= 1000 ? `${freq / 1000}k` : freq}
+                  </span>
+                  <input
+                    type="range"
+                    min={-12}
+                    max={12}
+                    step={1}
+                    value={eqGains[i]}
+                    onChange={(e) => {
+                      const next = [...eqGains];
+                      next[i] = Number(e.target.value);
+                      applyEqGains(next);
+                    }}
+                    className="slider-visible slider-fill flex-1"
+                    style={{ ["--fill" as string]: `${((eqGains[i] + 12) / 24) * 100}%` }}
+                    aria-label={`Banda ${freq} Hz`}
+                  />
+                  <span className="w-11 shrink-0 text-xs tabular-nums text-zinc-400">
+                    {eqGains[i] > 0 ? "+" : ""}
+                    {eqGains[i]}dB
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </>
