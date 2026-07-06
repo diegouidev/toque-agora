@@ -3,12 +3,14 @@
 import { useRef, useState } from "react";
 import type { Track } from "../lib/api";
 import { useDownloads } from "../lib/downloads";
+import Marquee from "./Marquee";
 import { useToast } from "./Toast";
 import {
   DownloadIcon,
   DragIcon,
   EditIcon,
   HeartIcon,
+  MoreIcon,
   OfflineIcon,
   PlayIcon,
   PlusIcon,
@@ -66,6 +68,32 @@ export default function TrackList({
     }
   }
 
+  // Menu "⋮" por faixa. Posição fixa calculada do botão (não é cortado pelo
+  // container com scroll). Abre acima quando há pouco espaço embaixo.
+  const [menuTrack, setMenuTrack] = useState<Track | null>(null);
+  const [menuPos, setMenuPos] = useState<{
+    top?: number;
+    bottom?: number;
+    right: number;
+  }>({ right: 0 });
+
+  function openMenu(e: React.MouseEvent, track: Track) {
+    e.stopPropagation();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const right = window.innerWidth - r.right;
+    if (window.innerHeight - r.bottom < 300) {
+      setMenuPos({ bottom: window.innerHeight - r.top + 6, right });
+    } else {
+      setMenuPos({ top: r.bottom + 6, right });
+    }
+    setMenuTrack(track);
+  }
+  const closeMenu = () => setMenuTrack(null);
+
+  const hasMenu = (t: Track): boolean =>
+    !!(onAddToPlaylist || onPlayNext || dl.licenseValid || onDownload || onRename || onRemove) &&
+    !!t;
+
   // Drag-and-drop com Pointer Events (funciona no MOUSE e no TOQUE — o HTML5
   // drag nativo não dispara em telas de toque). Estado para o visual; refs para
   // a lógica (evita closure obsoleto dentro dos handlers de ponteiro).
@@ -118,200 +146,222 @@ export default function TrackList({
   }
 
   return (
-    <ul className="space-y-0.5">
-      {tracks.map((track, i) => {
-        const active = track.id === currentTrackId;
-        const isOver = overIndex === i && dragIndex !== null && dragIndex !== i;
-        return (
-          <li
-            key={track.id}
-            data-track-index={i}
-            className={isOver ? "border-t-2 border-accent" : ""}
-          >
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelect(i)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSelect(i);
-                }
-              }}
-              className={`group flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 sm:gap-4 sm:px-4 ${
-                active ? "bg-white/10" : "hover:bg-white/5"
-              } ${dragIndex === i ? "opacity-40" : ""}`}
+    <>
+      <ul className="space-y-0.5">
+        {tracks.map((track, i) => {
+          const active = track.id === currentTrackId;
+          const isOver = overIndex === i && dragIndex !== null && dragIndex !== i;
+          return (
+            <li
+              key={track.id}
+              data-track-index={i}
+              className={isOver ? "border-t-2 border-accent" : ""}
             >
-              {/* Handle de arrasto (só em playlist) — Pointer Events p/ funcionar no toque */}
-              {onReorder && (
-                <span
-                  onPointerDown={(e) => startDrag(e, i)}
-                  onPointerMove={moveDrag}
-                  onPointerUp={endDrag}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{ touchAction: "none" }}
-                  className="shrink-0 cursor-grab text-zinc-600 hover:text-white active:cursor-grabbing"
-                  aria-label="Arrastar para reordenar"
-                  title="Arrastar"
-                >
-                  <DragIcon className="h-4 w-4" />
-                </span>
-              )}
-              <span className="flex w-6 shrink-0 items-center justify-center text-sm tabular-nums text-zinc-500">
-                {active && isPlaying ? (
-                  <Equalizer />
-                ) : (
-                  <>
-                    <span className={`group-hover:hidden ${active ? "text-accent" : ""}`}>
-                      {i + 1}
-                    </span>
-                    <PlayIcon className="ml-0.5 hidden h-3.5 w-3.5 text-white group-hover:block" />
-                  </>
-                )}
-              </span>
-              <span
-                className={`min-w-0 flex-1 truncate ${
-                  active ? "font-semibold text-accent" : "text-zinc-100"
-                }`}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelect(i)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelect(i);
+                  }
+                }}
+                className={`group flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 sm:gap-4 sm:px-4 ${
+                  active ? "bg-white/10" : "hover:bg-white/5"
+                } ${dragIndex === i ? "opacity-40" : ""}`}
               >
-                {track.display_name}
-              </span>
+                {/* Handle de arrasto (só em playlist) — Pointer Events p/ funcionar no toque */}
+                {onReorder && (
+                  <span
+                    onPointerDown={(e) => startDrag(e, i)}
+                    onPointerMove={moveDrag}
+                    onPointerUp={endDrag}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ touchAction: "none" }}
+                    className="shrink-0 cursor-grab text-zinc-600 hover:text-white active:cursor-grabbing"
+                    aria-label="Arrastar para reordenar"
+                    title="Arrastar"
+                  >
+                    <DragIcon className="h-4 w-4" />
+                  </span>
+                )}
+                <span className="flex w-6 shrink-0 items-center justify-center text-sm tabular-nums text-zinc-500">
+                  {active && isPlaying ? (
+                    <Equalizer />
+                  ) : (
+                    <>
+                      <span className={`group-hover:hidden ${active ? "text-accent" : ""}`}>
+                        {i + 1}
+                      </span>
+                      <PlayIcon className="ml-0.5 hidden h-3.5 w-3.5 text-white group-hover:block" />
+                    </>
+                  )}
+                </span>
 
-              {/* Curtir */}
-              {onToggleFavorite && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleFavorite(track);
-                  }}
-                  className={`shrink-0 p-1 transition-colors ${
-                    track.is_favorite
-                      ? "text-accent"
-                      : "text-zinc-500 opacity-0 hover:text-white group-hover:opacity-100"
-                  }`}
-                  aria-label={track.is_favorite ? "Descurtir" : "Curtir"}
-                  title={track.is_favorite ? "Descurtir" : "Curtir"}
-                >
-                  <HeartIcon className="h-4 w-4" filled={track.is_favorite} />
-                </button>
-              )}
-
-              {/* Tocar depois (adicionar à fila) */}
-              {onPlayNext && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPlayNext(track);
-                  }}
-                  className="shrink-0 p-1 text-zinc-500 opacity-0 transition hover:text-white group-hover:opacity-100"
-                  aria-label="Tocar depois"
-                  title="Tocar depois"
-                >
-                  <QueueIcon className="h-4 w-4" />
-                </button>
-              )}
-
-              {/* Adicionar a playlist */}
-              {onAddToPlaylist && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAddToPlaylist(track);
-                  }}
-                  className="shrink-0 p-1 text-zinc-500 opacity-0 transition hover:text-white group-hover:opacity-100"
-                  aria-label="Adicionar a playlist"
-                  title="Adicionar a playlist"
-                >
-                  <PlusIcon className="h-4 w-4" />
-                </button>
-              )}
-
-              {/* Baixar para offline (assinante com licença) */}
-              {dl.licenseValid && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleOffline(track);
-                  }}
-                  disabled={dl.busy.has(track.id)}
-                  className={`shrink-0 p-1 transition ${
-                    dl.isDownloaded(track.id)
-                      ? "text-accent"
-                      : "text-zinc-500 opacity-0 hover:text-white group-hover:opacity-100"
-                  } ${dl.busy.has(track.id) ? "animate-pulse opacity-100" : ""}`}
-                  aria-label={
-                    dl.isDownloaded(track.id)
-                      ? "Remover download offline"
-                      : "Baixar para ouvir offline"
-                  }
-                  title={
-                    dl.busy.has(track.id)
-                      ? "Baixando…"
-                      : dl.isDownloaded(track.id)
-                        ? "Baixado (clique para remover)"
-                        : "Baixar para ouvir offline"
-                  }
-                >
-                  <OfflineIcon
-                    className="h-4 w-4"
-                    done={dl.isDownloaded(track.id)}
+                {/* Nome — desliza (marquee) só na faixa que está tocando */}
+                <div className="min-w-0 flex-1">
+                  <Marquee
+                    text={track.display_name}
+                    active={active}
+                    className={active ? "font-semibold text-accent" : "text-zinc-100"}
                   />
-                </button>
-              )}
+                </div>
 
-              {/* Baixar MP3 (dono/admin) */}
-              {onDownload && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDownload(track);
-                  }}
-                  className="shrink-0 p-1 text-zinc-500 opacity-0 transition hover:text-white group-hover:opacity-100"
-                  aria-label="Baixar faixa"
-                  title="Baixar MP3"
-                >
-                  <DownloadIcon className="h-4 w-4" />
-                </button>
-              )}
+                {/* Curtir (única ação inline) */}
+                {onToggleFavorite && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleFavorite(track);
+                    }}
+                    className={`shrink-0 p-1 transition-colors ${
+                      track.is_favorite
+                        ? "text-accent"
+                        : "text-zinc-500 hover:text-white"
+                    }`}
+                    aria-label={track.is_favorite ? "Descurtir" : "Curtir"}
+                    title={track.is_favorite ? "Descurtir" : "Curtir"}
+                  >
+                    <HeartIcon className="h-4 w-4" filled={track.is_favorite} />
+                  </button>
+                )}
 
-              {/* Renomear (dono/admin) */}
-              {onRename && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRename(track);
-                  }}
-                  className="shrink-0 p-1 text-zinc-500 opacity-0 transition hover:text-white group-hover:opacity-100"
-                  aria-label="Renomear faixa"
-                  title="Renomear"
-                >
-                  <EditIcon className="h-4 w-4" />
-                </button>
-              )}
+                <span className="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-500">
+                  {fmtDuration(track.duration)}
+                </span>
 
-              {/* Remover (contexto playlist) */}
-              {onRemove && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemove(track);
-                  }}
-                  className="shrink-0 p-1 text-zinc-500 opacity-0 transition hover:text-red-400 group-hover:opacity-100"
-                  aria-label="Remover"
-                  title="Remover da playlist"
-                >
-                  ✕
-                </button>
-              )}
+                {/* Menu de ações "⋮" */}
+                {hasMenu(track) && (
+                  <button
+                    onClick={(e) => openMenu(e, track)}
+                    className="shrink-0 p-1 text-zinc-400 transition-colors hover:text-white"
+                    aria-label="Mais ações"
+                    title="Mais ações"
+                  >
+                    <MoreIcon className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
 
-              <span className="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-500">
-                {fmtDuration(track.duration)}
-              </span>
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+      {/* Dropdown do menu "⋮" (posição fixa; não é cortado pelo scroll) */}
+      {menuTrack && (
+        <>
+          <div className="fixed inset-0 z-[55]" onClick={closeMenu} />
+          <div
+            role="menu"
+            className="fixed z-[56] w-56 overflow-hidden rounded-2xl border border-white/10 bg-surface shadow-2xl"
+            style={menuPos}
+          >
+            {onPlayNext && (
+              <MenuItem
+                icon={<QueueIcon className="h-4 w-4 text-zinc-400" />}
+                label="Tocar em seguida"
+                onClick={() => {
+                  onPlayNext(menuTrack);
+                  closeMenu();
+                }}
+              />
+            )}
+            {onAddToPlaylist && (
+              <MenuItem
+                icon={<PlusIcon className="h-4 w-4 text-zinc-400" />}
+                label="Adicionar à playlist"
+                onClick={() => {
+                  onAddToPlaylist(menuTrack);
+                  closeMenu();
+                }}
+              />
+            )}
+            {dl.licenseValid && (
+              <MenuItem
+                icon={
+                  <OfflineIcon
+                    className="h-4 w-4 text-zinc-400"
+                    done={dl.isDownloaded(menuTrack.id)}
+                  />
+                }
+                label={
+                  dl.busy.has(menuTrack.id)
+                    ? "Baixando…"
+                    : dl.isDownloaded(menuTrack.id)
+                      ? "Remover download"
+                      : "Baixar para offline"
+                }
+                disabled={dl.busy.has(menuTrack.id)}
+                onClick={() => {
+                  toggleOffline(menuTrack);
+                  closeMenu();
+                }}
+              />
+            )}
+            {onDownload && (
+              <MenuItem
+                icon={<DownloadIcon className="h-4 w-4 text-zinc-400" />}
+                label="Baixar arquivo (MP3)"
+                onClick={() => {
+                  onDownload(menuTrack);
+                  closeMenu();
+                }}
+              />
+            )}
+            {onRename && (
+              <MenuItem
+                icon={<EditIcon className="h-4 w-4 text-zinc-400" />}
+                label="Renomear"
+                onClick={() => {
+                  onRename(menuTrack);
+                  closeMenu();
+                }}
+              />
+            )}
+            {onRemove && (
+              <MenuItem
+                icon={<span className="w-4 text-center text-red-400">✕</span>}
+                label="Remover da playlist"
+                danger
+                onClick={() => {
+                  onRemove(menuTrack);
+                  closeMenu();
+                }}
+              />
+            )}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function MenuItem({
+  icon,
+  label,
+  onClick,
+  danger,
+  disabled,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      role="menuitem"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/10 disabled:opacity-50 ${
+        danger ? "text-red-400" : "text-zinc-100"
+      }`}
+    >
+      {icon}
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
 

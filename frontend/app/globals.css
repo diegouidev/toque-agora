@@ -59,6 +59,34 @@ input[type="range"]::-moz-range-thumb {
   background: #fff;
 }
 
+/* ---- Marquee (nome deslizante quando o texto é maior que o espaço) ---- */
+/* A distância a percorrer vem da var --shift (calculada no JS pelo overflow). */
+@keyframes ta-marquee {
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  50%,
+  62% {
+    transform: translateX(var(--shift, 0));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+.marquee-anim {
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform;
+  animation: ta-marquee var(--dur, 8s) ease-in-out infinite;
+}
+/* Respeita "reduzir movimento": não desliza. */
+@media (prefers-reduced-motion: reduce) {
+  .marquee-anim {
+    animation: none;
+  }
+}
+
 /* Variante: thumb sempre visível (barra de progresso do player / volume). */
 input[type="range"].slider-visible::-webkit-slider-thumb {
   opacity: 1;

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { coverUrl, recordPlay, streamUrl, type Track } from "../lib/api";
 import { gradientFor } from "../lib/covers";
 import { useDownloads } from "../lib/downloads";
+import Marquee from "./Marquee";
 import {
   BroomIcon,
   ChevronDownIcon,
@@ -432,8 +433,8 @@ export default function PlayerBar({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{track.display_name}</p>
-              <p className="truncate text-xs text-zinc-400">{bandName ?? "—"}</p>
+              <Marquee text={track.display_name} active className="text-sm font-semibold" />
+              <Marquee text={bandName ?? "—"} active className="text-xs text-zinc-400" />
             </div>
           </button>
 
@@ -536,7 +537,11 @@ export default function PlayerBar({
             >
               <ChevronDownIcon className="h-7 w-7" />
             </button>
-            <p className="truncate px-3 text-sm font-semibold">{bandName ?? "Tocando agora"}</p>
+            <Marquee
+              text={bandName ?? "Tocando agora"}
+              active
+              className="min-w-0 flex-1 px-3 text-center text-sm font-semibold"
+            />
             <button
               onClick={onOpenQueue}
               aria-label="Fila"
@@ -565,8 +570,8 @@ export default function PlayerBar({
             {/* Título + artista + ações (curtir / adicionar à playlist) */}
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-2xl font-black">{track.display_name}</h2>
-                <p className="truncate text-zinc-300">{bandName ?? "—"}</p>
+                <Marquee text={track.display_name} active className="text-2xl font-black" />
+                <Marquee text={bandName ?? "—"} active className="text-zinc-300" />
               </div>
               {onToggleFavorite && (
                 <button
