@@ -7,6 +7,7 @@ import {
   publicCoverUrl,
   type PublicCdDetail,
 } from "../../lib/api";
+import Marquee from "../../components/Marquee";
 import PreviewPlayer from "../../components/PreviewPlayer";
 import { MusicIcon } from "../../components/icons";
 
@@ -75,11 +76,13 @@ export default function CdPageClient({ id }: { id: number }) {
               <MusicIcon className="h-16 w-16 text-white/80" />
             )}
           </div>
-          <div className="min-w-0 flex-1 text-center sm:text-left">
+          <div className="w-full min-w-0 flex-1 text-center sm:text-left">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">CD</p>
-            <h1 className="truncate font-display text-2xl font-black sm:text-3xl">
-              {cd?.name ?? "…"}
-            </h1>
+            <Marquee
+              text={cd?.name ?? "…"}
+              active
+              className="font-display text-2xl font-black sm:text-3xl"
+            />
             <p className="mt-1 text-sm text-zinc-400">
               {cd?.owner_name ?? "—"} · {cd?.track_count ?? 0} faixas
             </p>

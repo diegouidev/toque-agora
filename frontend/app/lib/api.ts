@@ -794,6 +794,38 @@ export async function fetchRecommendations(limit = 12): Promise<BandSummary[]> {
   return res.json();
 }
 
+// ---------- Comentários nos CDs ----------
+export interface Comment {
+  id: number;
+  body: string;
+  user_id: number;
+  user_name: string;
+  has_avatar: boolean;
+  mine: boolean;
+  created_at: string;
+}
+export async function fetchComments(bandId: number): Promise<Comment[]> {
+  const res = await apiFetch(`/api/bands/${bandId}/comments`);
+  if (!res.ok) throw new Error("Falha ao carregar comentários");
+  return res.json();
+}
+export async function addComment(bandId: number, body: string): Promise<Comment> {
+  const res = await apiFetch(`/api/bands/${bandId}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : "Falha ao comentar");
+  }
+  return res.json();
+}
+export async function deleteComment(id: number): Promise<void> {
+  const res = await apiFetch(`/api/comments/${id}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error("Falha ao apagar comentário");
+}
+
 // ---------- Upload com progresso (XHR) ----------
 // Retornado para o Uploader montar a request com cookie (withCredentials).
 export function uploadEndpoint(): string {

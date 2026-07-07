@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AddToPlaylistModal from "./components/AddToPlaylistModal";
 import ProfileModal from "./components/ProfileModal";
 import SubscribeView from "./components/SubscribeView";
 import BandCategories from "./components/BandCategories";
 import BandGrid from "./components/BandGrid";
+import Comments from "./components/Comments";
+import Marquee from "./components/Marquee";
 import { BandGridSkeleton } from "./components/Skeleton";
 import LandingView from "./components/LandingView";
 import MobileNav from "./components/MobileNav";
@@ -15,6 +17,7 @@ import PlaylistsBar from "./components/PlaylistsBar";
 import QueuePanel from "./components/QueuePanel";
 import SearchView from "./components/SearchView";
 import ShareModal from "./components/ShareModal";
+import ShareSheet from "./components/ShareSheet";
 import StatsModal from "./components/StatsModal";
 import DownloadsView from "./components/DownloadsView";
 import Sidebar, { type Tab } from "./components/Sidebar";
@@ -126,12 +129,17 @@ export default function Home() {
   const [showDownloads, setShowDownloads] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  // Pull-to-refresh (home).
+  const [ptr, setPtr] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const ptrStart = useRef<number | null>(null);
   // Categoria a pré-marcar no upload (null = upload genérico).
   const [uploadCategory, setUploadCategory] = useState<number | null>(null);
   const [showQueue, setShowQueue] = useState(false);
   const [quotaInfo, setQuotaInfo] = useState<QuotaExceeded | null>(null);
   const [addTrack, setAddTrack] = useState<Track | null>(null);
   const [shareTarget, setShareTarget] = useState<PlaylistSummary | null>(null);
+  const [shareBand, setShareBand] = useState<BandSummary | null>(null);
 
   const [bandsLoading, setBandsLoading] = useState(true);
   const [bandsError, setBandsError] = useState(false);
@@ -707,6 +715,42 @@ export default function Home() {
     toast.success("Playlist excluída.");
   }
 
+  // ----- Pull-to-refresh (só na home, no topo da página) -----
+  async function refreshHome() {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        loadBands(),
+        loadRecent(),
+        loadNews(),
+        loadRecommended(),
+        loadFavCds(),
+        loadPlaylists(),
+        loadShared(),
+        loadFavCount(),
+        refresh(),
+      ]);
+    } finally {
+      setRefreshing(false);
+      setPtr(0);
+    }
+  }
+  function onMainTouchStart(e: React.TouchEvent) {
+    ptrStart.current =
+      window.scrollY <= 0 && tab === "home" && !view ? e.touches[0].clientY : null;
+  }
+  function onMainTouchMove(e: React.TouchEvent) {
+    if (ptrStart.current == null || refreshing) return;
+    const dy = e.touches[0].clientY - ptrStart.current;
+    if (dy > 0 && window.scrollY <= 0) setPtr(Math.min(dy * 0.5, 90));
+  }
+  function onMainTouchEnd() {
+    if (ptrStart.current == null) return;
+    ptrStart.current = null;
+    if (ptr > 60 && !refreshing) refreshHome();
+    else setPtr(0);
+  }
+
   // ----- Guards -----
   if (loading) {
     return (
@@ -787,8 +831,12 @@ export default function Home() {
             {/* Infos */}
             <div className="min-w-0 flex-1 text-center sm:text-left">
               <p className="text-xs font-semibold uppercase tracking-wider text-zinc-300">CD</p>
-              <div className="flex items-center justify-center gap-2 sm:justify-start">
-                <h3 className="truncate text-2xl font-black sm:text-4xl">{viewTitle}</h3>
+              <div className="flex items-center gap-2">
+                <Marquee
+                  text={viewTitle}
+                  active
+                  className="min-w-0 flex-1 text-2xl font-black sm:text-4xl"
+                />
                 <button
                   onClick={() => onRenameBand(view.band)}
                   className="shrink-0 text-zinc-400 hover:text-white"
@@ -867,7 +915,7 @@ export default function Home() {
                 </button>
                 {!view.band.is_hidden && (
                   <button
-                    onClick={() => shareCd(view.band.id, view.band.name)}
+                    onClick={() => setShareBand(view.band)}
                     className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-zinc-300 transition-colors hover:text-white"
                     aria-label="Compartilhar CD"
                     title="Compartilhar CD"
@@ -931,6 +979,7 @@ export default function Home() {
           onShare={(t) => shareCd(t.band_id, t.display_name)}
         />
       </div>
+      {view.kind === "band" && <Comments bandId={view.band.id} />}
     </section>
   );
 
@@ -1142,7 +1191,30 @@ export default function Home() {
         onLogout={logout}
       />
 
-      <main className="min-w-0 flex-1 pb-44 lg:pb-28">
+      <main
+        className="relative min-w-0 flex-1 pb-44 lg:pb-28"
+        onTouchStart={onMainTouchStart}
+        onTouchMove={onMainTouchMove}
+        onTouchEnd={onMainTouchEnd}
+      >
+        {/* Indicador de "puxar para atualizar" */}
+        {(ptr > 0 || refreshing) && (
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center"
+            style={{
+              transform: `translateY(${refreshing ? 12 : Math.max(0, ptr - 24)}px)`,
+              opacity: refreshing ? 1 : Math.min(1, ptr / 60),
+            }}
+          >
+            <div className="mt-2 rounded-full bg-black/60 p-2 backdrop-blur">
+              <div
+                className={`h-5 w-5 rounded-full border-2 border-white/20 border-t-accent ${
+                  refreshing ? "animate-spin" : ""
+                }`}
+              />
+            </div>
+          </div>
+        )}
         {/* Header mobile (a sidebar cobre o desktop). */}
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-white/5 bg-base/80 px-4 py-3 backdrop-blur lg:hidden">
           <h1 className="font-display text-lg font-black uppercase leading-none tracking-tight">
@@ -1169,10 +1241,16 @@ export default function Home() {
             </button>
 
             {menuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                <div className="absolute right-0 top-12 z-50 w-60 overflow-hidden rounded-2xl border border-white/10 bg-surface shadow-2xl">
-                  <div className="border-b border-white/10 px-4 py-3">
+              <div
+                className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
+                onClick={() => setMenuOpen(false)}
+              >
+                <div
+                  className="w-full max-w-md overflow-hidden rounded-t-3xl border-t border-white/10 bg-surface pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl animate-fade-up"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="mx-auto my-2 h-1 w-10 rounded-full bg-white/20" />
+                  <div className="border-b border-white/10 px-5 py-3">
                     <p className="truncate text-sm font-semibold">
                       {me.display_name || me.email}
                     </p>
@@ -1186,7 +1264,7 @@ export default function Home() {
                         setMenuOpen(false);
                         openUpload();
                       }}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/10"
+                      className="flex w-full items-center gap-3 px-5 py-3.5 text-left text-sm hover:bg-white/10"
                     >
                       <UploadIcon className="h-4 w-4 text-zinc-400" /> Enviar músicas
                     </button>
@@ -1196,7 +1274,7 @@ export default function Home() {
                       setMenuOpen(false);
                       setShowProfile(true);
                     }}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/10"
+                    className="flex w-full items-center gap-3 px-5 py-3.5 text-left text-sm hover:bg-white/10"
                   >
                     <span className="w-4 text-center">👤</span> Meu perfil
                   </button>
@@ -1205,7 +1283,7 @@ export default function Home() {
                       setMenuOpen(false);
                       setShowStats(true);
                     }}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/10"
+                    className="flex w-full items-center gap-3 px-5 py-3.5 text-left text-sm hover:bg-white/10"
                   >
                     <span className="w-4 text-center">📊</span> Minha retrospectiva
                   </button>
@@ -1214,7 +1292,7 @@ export default function Home() {
                       setMenuOpen(false);
                       setShowDownloads(true);
                     }}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/10"
+                    className="flex w-full items-center gap-3 px-5 py-3.5 text-left text-sm hover:bg-white/10"
                   >
                     <span className="w-4 text-center">📥</span> Baixados (offline)
                   </button>
@@ -1224,7 +1302,7 @@ export default function Home() {
                         setMenuOpen(false);
                         router.push("/admin");
                       }}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/10"
+                      className="flex w-full items-center gap-3 px-5 py-3.5 text-left text-sm hover:bg-white/10"
                     >
                       <span className="w-4 text-center">⚙️</span> Painel admin
                     </button>
@@ -1234,12 +1312,12 @@ export default function Home() {
                       setMenuOpen(false);
                       logout();
                     }}
-                    className="flex w-full items-center gap-3 border-t border-white/10 px-4 py-3 text-left text-sm text-red-400 hover:bg-white/10"
+                    className="flex w-full items-center gap-3 border-t border-white/10 px-5 py-3.5 text-left text-sm text-red-400 hover:bg-white/10"
                   >
                     <span className="w-4 text-center">⏻</span> Sair
                   </button>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </header>
@@ -1303,6 +1381,7 @@ export default function Home() {
         onClearQueue={clearQueue}
         hasNext={queue.length > 0}
         hasPrev={queue.length > 0}
+        nextTitle={upcoming[0]?.display_name ?? null}
         isFavorite={currentTrack?.is_favorite ?? false}
         onToggleFavorite={currentTrack ? () => onToggleFav(currentTrack) : undefined}
         onAddToPlaylist={currentTrack ? () => setAddTrack(currentTrack) : undefined}
@@ -1355,6 +1434,9 @@ export default function Home() {
             loadShared();
           }}
         />
+      )}
+      {shareBand && (
+        <ShareSheet band={shareBand} onClose={() => setShareBand(null)} />
       )}
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
       {showStats && <StatsModal onClose={() => setShowStats(false)} />}

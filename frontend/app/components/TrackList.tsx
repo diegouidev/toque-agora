@@ -71,24 +71,10 @@ export default function TrackList({
     }
   }
 
-  // Menu "⋮" por faixa. Posição fixa calculada do botão (não é cortado pelo
-  // container com scroll). Abre acima quando há pouco espaço embaixo.
+  // Menu "⋮" por faixa — bottom-sheet (desliza de baixo; bom para o toque).
   const [menuTrack, setMenuTrack] = useState<Track | null>(null);
-  const [menuPos, setMenuPos] = useState<{
-    top?: number;
-    bottom?: number;
-    right: number;
-  }>({ right: 0 });
-
   function openMenu(e: React.MouseEvent, track: Track) {
     e.stopPropagation();
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const right = window.innerWidth - r.right;
-    if (window.innerHeight - r.bottom < 300) {
-      setMenuPos({ bottom: window.innerHeight - r.top + 6, right });
-    } else {
-      setMenuPos({ top: r.bottom + 6, right });
-    }
     setMenuTrack(track);
   }
   const closeMenu = () => setMenuTrack(null);
@@ -258,15 +244,21 @@ export default function TrackList({
         })}
       </ul>
 
-      {/* Dropdown do menu "⋮" (posição fixa; não é cortado pelo scroll) */}
+      {/* Menu "⋮" — bottom-sheet */}
       {menuTrack && (
-        <>
-          <div className="fixed inset-0 z-[55]" onClick={closeMenu} />
+        <div
+          className="fixed inset-0 z-[55] flex items-end justify-center bg-black/50 backdrop-blur-sm"
+          onClick={closeMenu}
+        >
           <div
             role="menu"
-            className="fixed z-[56] w-56 overflow-hidden rounded-2xl border border-white/10 bg-surface shadow-2xl"
-            style={menuPos}
+            className="w-full max-w-md overflow-hidden rounded-t-3xl border-t border-white/10 bg-surface pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl animate-fade-up"
+            onClick={(e) => e.stopPropagation()}
           >
+            <div className="mx-auto my-2 h-1 w-10 rounded-full bg-white/20" />
+            <p className="truncate px-4 pb-1 text-xs font-semibold text-zinc-400">
+              {menuTrack.display_name}
+            </p>
             {onPlayNext && (
               <MenuItem
                 icon={<QueueIcon className="h-4 w-4 text-zinc-400" />}
@@ -351,7 +343,7 @@ export default function TrackList({
               />
             )}
           </div>
-        </>
+        </div>
       )}
     </>
   );

@@ -52,6 +52,8 @@ interface Props {
   onClearQueue: () => void;
   hasNext: boolean;
   hasPrev: boolean;
+  // Nome da próxima faixa na fila (mostrado como "A seguir" no mini-player).
+  nextTitle?: string | null;
   // Ações sobre a faixa atual (Now Playing): curtir e adicionar à playlist.
   isFavorite?: boolean;
   onToggleFavorite?: () => void;
@@ -90,6 +92,7 @@ export default function PlayerBar({
   onClearQueue,
   hasNext,
   hasPrev,
+  nextTitle,
   isFavorite,
   onToggleFavorite,
   onAddToPlaylist,
@@ -564,6 +567,11 @@ export default function PlayerBar({
             <div className="min-w-0 flex-1">
               <Marquee text={track.display_name} active className="text-sm font-semibold" />
               <Marquee text={bandName ?? "—"} active className="text-xs text-zinc-400" />
+              {nextTitle && (
+                <p className="truncate text-[10px] text-zinc-500">
+                  A seguir: {nextTitle}
+                </p>
+              )}
             </div>
           </button>
 

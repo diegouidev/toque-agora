@@ -429,3 +429,18 @@ class MeStats(BaseModel):
 # ---------------- Novidades (CDs novos desde a última visita) ----------------
 class NewsCount(BaseModel):
     count: int = 0
+
+
+# ---------------- Comentários nos CDs ----------------
+class CommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=1000)
+
+
+class CommentOut(BaseModel):
+    id: int
+    body: str
+    user_id: int
+    user_name: str
+    has_avatar: bool = False
+    mine: bool = False
+    created_at: datetime
