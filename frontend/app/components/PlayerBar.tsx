@@ -287,21 +287,36 @@ export default function PlayerBar({
     } catch {
       /* ignore */
     }
+    // IMPORTANTE (iOS): o grafo Web Audio só é criado quando o usuário REALMENTE
+    // usa o equalizer (algum ganho ≠ 0). Enquanto está tudo neutro, o áudio toca
+    // direto pelo <audio> — o que preserva a reprodução em segundo plano/tela
+    // bloqueada. Plugar no AudioContext faz o iOS pausar o som no background.
+    if (gains.some((g) => g !== 0)) {
+      buildEqGraph();
+      audioCtxRef.current?.resume().catch(() => {});
+    }
     eqFiltersRef.current.forEach((f, i) => {
       f.gain.value = gains[i] ?? 0;
     });
   }
 
   function openEq() {
-    buildEqGraph();
-    // AudioContext começa "suspended"; retoma no gesto do usuário.
+    // Apenas abre o painel — NÃO cria o grafo (só criamos ao aplicar um ajuste).
     audioCtxRef.current?.resume().catch(() => {});
-    // Garante que os filtros reflitam os ganhos atuais.
-    eqFiltersRef.current.forEach((f, i) => {
-      f.gain.value = eqGains[i] ?? 0;
-    });
     setEqOpen(true);
   }
+
+  const eqActive = eqGains.some((g) => g !== 0);
+
+  // Ao voltar ao primeiro plano, retoma o AudioContext do EQ (o iOS o suspende
+  // no background). Só tem efeito se o grafo existir (usuário usou o EQ).
+  useEffect(() => {
+    function onVis() {
+      if (!document.hidden) audioCtxRef.current?.resume().catch(() => {});
+    }
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
   // Carrega e persiste o crossfade.
   useEffect(() => {
@@ -1060,6 +1075,20 @@ export default function PlayerBar({
                 </div>
               ))}
             </div>
+
+            {eqActive && (
+              <button
+                onClick={() => applyEqGains(EQ_BANDS.map(() => 0))}
+                className="w-full rounded-full border border-white/10 py-2 text-xs text-zinc-300 hover:bg-white/5"
+              >
+                Desligar equalizer (voltar ao normal)
+              </button>
+            )}
+            <p className="text-[11px] leading-snug text-zinc-500">
+              ⚠️ No iPhone, o equalizer faz a música pausar quando a tela bloqueia
+              (limitação do iOS). Para tocar de tela bloqueada sem parar, use o
+              “Normal”. Se já ativou nesta sessão, feche e reabra o app.
+            </p>
           </div>
         </div>
       )}
