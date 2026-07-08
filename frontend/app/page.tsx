@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import AddToPlaylistModal from "./components/AddToPlaylistModal";
 import ProfileModal from "./components/ProfileModal";
@@ -1240,9 +1241,9 @@ export default function Home() {
               <MenuIcon className="h-5 w-5 text-zinc-300" />
             </button>
 
-            {menuOpen && (
+            {menuOpen && createPortal(
               <div
-                className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
+                className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm"
                 onClick={() => setMenuOpen(false)}
               >
                 <div
@@ -1317,7 +1318,8 @@ export default function Home() {
                     <span className="w-4 text-center">⏻</span> Sair
                   </button>
                 </div>
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
         </header>

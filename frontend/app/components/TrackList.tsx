@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Track } from "../lib/api";
 import { useDownloads } from "../lib/downloads";
 import Marquee from "./Marquee";
@@ -244,10 +245,10 @@ export default function TrackList({
         })}
       </ul>
 
-      {/* Menu "⋮" — bottom-sheet */}
-      {menuTrack && (
+      {/* Menu "⋮" — bottom-sheet (portal p/ escapar do backdrop-blur do detalhe) */}
+      {menuTrack && createPortal(
         <div
-          className="fixed inset-0 z-[55] flex items-end justify-center bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 backdrop-blur-sm"
           onClick={closeMenu}
         >
           <div
@@ -343,7 +344,8 @@ export default function TrackList({
               />
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

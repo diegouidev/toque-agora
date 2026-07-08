@@ -447,30 +447,129 @@ export default function PlayerBar({
     else audio.pause();
   }, [isPlaying, track]);
 
-  // MediaSession: controles na tela de bloqueio/notificação do celular.
+  // Sincroniza a barra de progresso/scrubber da tela de bloqueio.
+  function syncPositionState() {
+    if (
+      typeof navigator === "undefined" ||
+      !("mediaSession" in navigator) ||
+      !navigator.mediaSession.setPositionState
+    )
+      return;
+    const a = audioRef.current;
+    if (!a || !a.duration || !isFinite(a.duration)) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: a.duration,
+        playbackRate: a.playbackRate || 1,
+        position: Math.min(a.currentTime, a.duration),
+      });
+    } catch {
+      /* valores inválidos: ignora */
+    }
+  }
+
+  // MediaSession — metadados + CAPA na tela de bloqueio. A capa exige login,
+  // então a buscamos com o cookie e a embutimos como data URL (o iOS busca a
+  // arte SEM credenciais e falharia com a URL autenticada → capa em branco).
+  const coverCacheRef = useRef<{ id: number; url: string } | null>(null);
   useEffect(() => {
     if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
     if (!track) return;
-    const artwork =
-      hasCover && bandId != null
-        ? [{ src: coverUrl(bandId), sizes: "512x512", type: "image/jpeg" }]
-        : undefined;
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: track.display_name,
-      artist: bandName ?? "TOQUE AGORA",
-      album: bandName ?? "",
-      artwork,
-    });
-    navigator.mediaSession.setActionHandler("play", onTogglePlay);
-    navigator.mediaSession.setActionHandler("pause", onTogglePlay);
-    navigator.mediaSession.setActionHandler("nexttrack", onNext);
-    navigator.mediaSession.setActionHandler("previoustrack", onPrev);
+    let cancelled = false;
+
+    const apply = (artwork?: MediaImage[]) => {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.display_name,
+        artist: bandName ?? "TOQUE AGORA",
+        album: bandName ?? "",
+        artwork,
+      });
+    };
+    apply(undefined); // imediato; a capa entra logo depois
+
+    if (hasCover && bandId != null) {
+      const cached = coverCacheRef.current;
+      if (cached && cached.id === bandId) {
+        apply([{ src: cached.url, sizes: "512x512", type: "image/jpeg" }]);
+      } else {
+        (async () => {
+          try {
+            const res = await fetch(coverUrl(bandId), { credentials: "include" });
+            if (!res.ok) return;
+            const blob = await res.blob();
+            const url = await new Promise<string>((resolve, reject) => {
+              const r = new FileReader();
+              r.onload = () => resolve(r.result as string);
+              r.onerror = reject;
+              r.readAsDataURL(blob);
+            });
+            if (cancelled) return;
+            coverCacheRef.current = { id: bandId, url };
+            const type = blob.type || "image/jpeg";
+            apply([
+              { src: url, sizes: "256x256", type },
+              { src: url, sizes: "512x512", type },
+            ]);
+          } catch {
+            /* sem capa na tela de bloqueio */
+          }
+        })();
+      }
+    }
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.id, bandName, hasCover, bandId]);
+
+  // MediaSession — handlers. Re-registrados a cada render (closures frescas).
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    const ms = navigator.mediaSession;
+    const set = (
+      action: MediaSessionAction,
+      handler: MediaSessionActionHandler | null,
+    ) => {
+      try {
+        ms.setActionHandler(action, handler);
+      } catch {
+        /* ação não suportada neste navegador */
+      }
+    };
+    set("play", onTogglePlay);
+    set("pause", onTogglePlay);
+    set("nexttrack", hasNext ? onNext : null);
+    set("previoustrack", hasPrev ? onPrev : null);
+    set("seekto", (d) => {
+      const a = audioRef.current;
+      if (a && d.seekTime != null) {
+        a.currentTime = d.seekTime;
+        syncPositionState();
+      }
+    });
+    set("seekbackward", (d) => {
+      const a = audioRef.current;
+      if (a) {
+        a.currentTime = Math.max(0, a.currentTime - (d.seekOffset || 10));
+        syncPositionState();
+      }
+    });
+    set("seekforward", (d) => {
+      const a = audioRef.current;
+      if (a) {
+        a.currentTime = Math.min(
+          a.duration || a.currentTime,
+          a.currentTime + (d.seekOffset || 10),
+        );
+        syncPositionState();
+      }
+    });
+  });
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
     navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+    syncPositionState();
   }, [isPlaying]);
 
   function seek(e: React.ChangeEvent<HTMLInputElement>) {
@@ -535,9 +634,13 @@ export default function PlayerBar({
             lastReported.current = t;
             onTime(t);
           }
+          syncPositionState(); // mantém o scrubber da tela de bloqueio em dia
         }}
         onPause={() => onTime?.(audioRef.current?.currentTime ?? 0)}
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onLoadedMetadata={(e) => {
+          setDuration(e.currentTarget.duration);
+          syncPositionState();
+        }}
         onCanPlay={(e) => {
           // Rede da correção do "rádio não inicia sozinho": ao trocar a fila
           // (ex.: iniciar um rádio), o play() disparado logo após o load() pode
