@@ -29,6 +29,9 @@ interface FileProgress {
 
 type UploadOneResult = { result?: UploadResult; error?: string; quota?: QuotaExceeded };
 
+// Arquivo de uma pasta com seu caminho relativo (inclui a pasta de topo).
+type FolderFile = { file: File; rel: string };
+
 // Tamanho de cada pedaço enviado. Abaixo de 100 MB para passar pelo limite de
 // corpo da Cloudflare/proxy (plano Free = 100 MB).
 const CHUNK_SIZE = 90 * 1024 * 1024;
@@ -54,6 +57,63 @@ function xhrPost(
   });
 }
 
+// Lê recursivamente uma entrada do drag & drop, coletando arquivos com o
+// caminho relativo (fullPath sem a barra inicial — mesmo formato do
+// webkitRelativePath do input de pasta).
+async function collectEntry(entry: FileSystemEntry, out: FolderFile[]): Promise<void> {
+  if (entry.isFile) {
+    const file = await new Promise<File>((resolve, reject) =>
+      (entry as FileSystemFileEntry).file(resolve, reject),
+    );
+    out.push({ file, rel: entry.fullPath.replace(/^\/+/, "") });
+  } else if (entry.isDirectory) {
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    // readEntries devolve no máximo ~100 entradas por chamada; repete até esvaziar.
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+        reader.readEntries(resolve, reject),
+      );
+      if (batch.length === 0) break;
+      for (const child of batch) await collectEntry(child, out);
+    }
+  }
+}
+
+// Agrupa os arquivos pela pasta de topo — cada grupo vira um .zip separado.
+function groupByTopFolder(files: FolderFile[]): Map<string, FolderFile[]> {
+  const groups = new Map<string, FolderFile[]>();
+  for (const f of files) {
+    const top = f.rel.split("/")[0] || "pasta";
+    const group = groups.get(top);
+    if (group) group.push(f);
+    else groups.set(top, [f]);
+  }
+  return groups;
+}
+
+// Zipa UMA pasta (STORE = sem recomprimir), preservando a estrutura interna.
+// Devolve null se a pasta não tiver MP3s aproveitáveis.
+async function zipFolderFiles(
+  folderName: string,
+  files: FolderFile[],
+  onProgress: (percent: number) => void,
+): Promise<File | null> {
+  const list = files.filter((f) => FOLDER_KEEP.test(f.rel));
+  if (list.length === 0) return null;
+  const zip = new JSZip();
+  for (const f of list) {
+    // Remove o 1º segmento (pasta escolhida) para preservar a estrutura interna:
+    // subpastas viram bandas; MP3s na raiz viram um CD com o nome da pasta.
+    const inner = f.rel.split("/").slice(1).join("/") || f.file.name;
+    zip.file(inner, f.file);
+  }
+  const blob = await zip.generateAsync(
+    { type: "blob", compression: "STORE" },
+    (meta) => onProgress(Math.round(meta.percent)),
+  );
+  return new File([blob], `${folderName}.zip`, { type: "application/zip" });
+}
+
 // Interpreta um 413: (a) quota estruturada → modal; (b) corpo grande demais.
 function parse413(text: string): UploadOneResult {
   try {
@@ -75,51 +135,88 @@ export default function Uploader({ onUploaded, onQuotaExceeded, categoryId }: Pr
   const [dragging, setDragging] = useState(false);
   const [items, setItems] = useState<FileProgress[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Progresso de compactação da pasta (antes de começar o upload).
-  const [zipping, setZipping] = useState<number | null>(null);
+  // Progresso de compactação das pastas (antes de começar o upload).
+  const [zipping, setZipping] = useState<{ label: string; percent: number } | null>(null);
 
   function pickFiles() {
     inputRef.current?.click();
   }
 
-  // Zipa uma pasta escolhida no navegador (STORE = sem recomprimir) e envia como
-  // .zip pelo MESMO fluxo chunked — herda progresso, quota, prévia e categoria.
-  async function zipFolder(files: FileList) {
+  // Zipa cada pasta (uma por vez, com progresso) e envia todas num lote só,
+  // pelo MESMO fluxo chunked — herda progresso, quota, prévia e categoria.
+  // `extraFiles` são .rar/.zip soltos arrastados junto com as pastas.
+  async function zipAndUpload(folders: Map<string, FolderFile[]>, extraFiles: File[] = []) {
     setError(null);
-    const list = Array.from(files).filter((f) =>
-      FOLDER_KEEP.test(f.webkitRelativePath || f.name),
-    );
-    if (list.length === 0) {
-      setError("A pasta não tem MP3s.");
-      return;
-    }
-    // Nome da pasta de topo (vira o nome do arquivo/CD).
-    const topFolder =
-      (list[0].webkitRelativePath || "").split("/")[0] || "pasta";
-
-    const zip = new JSZip();
-    for (const f of list) {
-      const rel = f.webkitRelativePath || f.name;
-      // Remove o 1º segmento (pasta escolhida) para preservar a estrutura interna:
-      // subpastas viram bandas; MP3s na raiz viram um CD com o nome da pasta.
-      const inner = rel.split("/").slice(1).join("/") || f.name;
-      zip.file(inner, f);
-    }
+    const zips: File[] = [];
+    const skipped: string[] = [];
+    const names = Array.from(folders.keys());
     try {
-      setZipping(0);
-      const blob = await zip.generateAsync(
-        { type: "blob", compression: "STORE" },
-        (meta) => setZipping(Math.round(meta.percent)),
-      );
-      setZipping(null);
-      const zipFile = new File([blob], `${topFolder}.zip`, {
-        type: "application/zip",
-      });
-      await upload([zipFile]);
+      for (let i = 0; i < names.length; i++) {
+        const name = names[i];
+        const label =
+          names.length > 1 ? `“${name}” (${i + 1}/${names.length})` : `“${name}”`;
+        setZipping({ label, percent: 0 });
+        const zipFile = await zipFolderFiles(name, folders.get(name)!, (percent) =>
+          setZipping({ label, percent }),
+        );
+        if (zipFile) zips.push(zipFile);
+        else skipped.push(name);
+      }
     } catch {
       setZipping(null);
-      setError("Falha ao preparar a pasta.");
+      setError("Falha ao preparar as pastas.");
+      return;
     }
+    setZipping(null);
+
+    const all = [...zips, ...extraFiles];
+    if (all.length === 0) {
+      setError(
+        skipped.length === 1
+          ? `A pasta “${skipped[0]}” não tem MP3s.`
+          : "Nenhuma das pastas tem MP3s.",
+      );
+      return;
+    }
+    await upload(all);
+    if (skipped.length > 0) {
+      setError(`Sem MP3s (ignoradas): ${skipped.join(", ")}`);
+    }
+  }
+
+  // Pasta escolhida pelo botão (webkitdirectory — o navegador só deixa UMA por
+  // vez; para várias de uma vez, o caminho é arrastar para a área de drop).
+  async function zipFolder(files: FileList) {
+    const folderFiles: FolderFile[] = Array.from(files).map((f) => ({
+      file: f,
+      rel: f.webkitRelativePath || f.name,
+    }));
+    await zipAndUpload(groupByTopFolder(folderFiles));
+  }
+
+  // Drop contendo pastas: lê cada uma recursivamente e zipa separadamente.
+  // Permite arrastar VÁRIAS pastas de uma vez (misturadas ou não com .rar/.zip).
+  async function dropEntries(entries: FileSystemEntry[]) {
+    setError(null);
+    const folderFiles: FolderFile[] = [];
+    const loose: File[] = [];
+    try {
+      for (const entry of entries) {
+        if (entry.isDirectory) {
+          await collectEntry(entry, folderFiles);
+        } else if (entry.isFile && /\.(rar|zip)$/i.test(entry.name)) {
+          loose.push(
+            await new Promise<File>((resolve, reject) =>
+              (entry as FileSystemFileEntry).file(resolve, reject),
+            ),
+          );
+        }
+      }
+    } catch {
+      setError("Falha ao ler as pastas arrastadas.");
+      return;
+    }
+    await zipAndUpload(groupByTopFolder(folderFiles), loose);
   }
 
   // Envia UM arquivo em pedaços (<100 MB cada) e finaliza com /complete.
@@ -267,7 +364,18 @@ export default function Uploader({ onUploaded, onQuotaExceeded, categoryId }: Pr
       onDrop={(e) => {
         e.preventDefault();
         setDragging(false);
-        if (e.dataTransfer.files?.length) upload(e.dataTransfer.files);
+        // As entradas precisam ser coletadas AINDA no evento (síncrono):
+        // o navegador invalida o dataTransfer assim que o handler retorna.
+        const entries: FileSystemEntry[] = [];
+        for (const item of Array.from(e.dataTransfer.items ?? [])) {
+          const entry = item.webkitGetAsEntry?.();
+          if (entry) entries.push(entry);
+        }
+        if (entries.some((en) => en.isDirectory)) {
+          void dropEntries(entries);
+        } else if (e.dataTransfer.files?.length) {
+          upload(e.dataTransfer.files);
+        }
       }}
       className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
         dragging
@@ -302,11 +410,13 @@ export default function Uploader({ onUploaded, onQuotaExceeded, categoryId }: Pr
 
       {zipping !== null ? (
         <div className="w-full max-w-md space-y-2" onClick={(e) => e.stopPropagation()}>
-          <p className="text-sm font-medium">Preparando a pasta… {zipping}%</p>
+          <p className="text-sm font-medium">
+            Preparando {zipping.label}… {zipping.percent}%
+          </p>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
             <div
               className="h-full bg-accent transition-[width]"
-              style={{ width: `${zipping}%` }}
+              style={{ width: `${zipping.percent}%` }}
             />
           </div>
         </div>
@@ -314,8 +424,8 @@ export default function Uploader({ onUploaded, onQuotaExceeded, categoryId }: Pr
         <>
           <div className="text-3xl">📦</div>
           <p className="font-medium">
-            Arraste <span className="font-mono">.rar</span>/<span className="font-mono">.zip</span>{" "}
-            aqui, ou escolha:
+            Arraste pastas ou <span className="font-mono">.rar</span>/
+            <span className="font-mono">.zip</span> aqui, ou escolha:
           </p>
           <div className="flex w-full max-w-md flex-col gap-2 sm:flex-row">
             <button
@@ -334,7 +444,8 @@ export default function Uploader({ onUploaded, onQuotaExceeded, categoryId }: Pr
             </button>
           </div>
           <p className="text-xs text-zinc-500">
-            Cada subpasta vira uma banda. A pasta é compactada no navegador antes de enviar.
+            Cada subpasta vira uma banda. Dica: para enviar várias pastas de uma
+            vez, arraste todas juntas para cá.
           </p>
         </>
       ) : (
