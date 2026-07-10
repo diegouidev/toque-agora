@@ -538,8 +538,21 @@ export default function PlayerBar({
     };
     set("play", onTogglePlay);
     set("pause", onTogglePlay);
-    set("nexttrack", hasNext ? onNext : null);
-    set("previoustrack", hasPrev ? onPrev : null);
+    // Sempre registrados: com eles o iOS mostra ⏮/⏭ na tela de bloqueio.
+    // Sem faixa seguinte o ⏭ não faz nada; sem anterior o ⏮ volta ao início.
+    set("nexttrack", () => {
+      if (hasNext) onNext();
+    });
+    set("previoustrack", () => {
+      if (hasPrev) onPrev();
+      else {
+        const a = audioRef.current;
+        if (a) {
+          a.currentTime = 0;
+          syncPositionState();
+        }
+      }
+    });
     set("seekto", (d) => {
       const a = audioRef.current;
       if (a && d.seekTime != null) {
@@ -547,23 +560,10 @@ export default function PlayerBar({
         syncPositionState();
       }
     });
-    set("seekbackward", (d) => {
-      const a = audioRef.current;
-      if (a) {
-        a.currentTime = Math.max(0, a.currentTime - (d.seekOffset || 10));
-        syncPositionState();
-      }
-    });
-    set("seekforward", (d) => {
-      const a = audioRef.current;
-      if (a) {
-        a.currentTime = Math.min(
-          a.duration || a.currentTime,
-          a.currentTime + (d.seekOffset || 10),
-        );
-        syncPositionState();
-      }
-    });
+    // seekbackward/seekforward NÃO são registrados de propósito: quando
+    // existem, o iOS troca ⏮/⏭ pelos botões de ±10s na tela de bloqueio.
+    set("seekbackward", null);
+    set("seekforward", null);
   });
 
   useEffect(() => {
