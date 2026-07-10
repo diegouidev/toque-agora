@@ -825,12 +825,15 @@ export default function PlayerBar({
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col justify-center gap-6 px-7">
+          {/* Em janelas baixas (desktop) a capa e os gaps encolhem com a altura
+              (vh); se ainda assim não couber, o scroll garante acesso a tudo.
+              mt/mb-auto no 1º e último filho centralizam quando sobra espaço. */}
+          <div className="flex min-h-0 flex-1 flex-col gap-[min(1.5rem,2.5vh)] overflow-y-auto px-7 py-2">
             {/* Capa grande — área de gestos (swipe ↓ fecha, ← → troca faixa) */}
             <div
               onTouchStart={onTouchStart}
               onTouchEnd={onTouchEnd}
-              className="mx-auto flex aspect-square w-full max-w-[340px] items-center justify-center overflow-hidden rounded-2xl bg-black/25 shadow-2xl"
+              className="mx-auto mt-auto flex aspect-square w-full max-w-[min(340px,42vh)] shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-black/25 shadow-2xl"
             >
               {coverImg ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -937,7 +940,7 @@ export default function PlayerBar({
             </div>
 
             {/* Volume + controles (crossfade / velocidade / timer) */}
-            <div className="space-y-3">
+            <div className="mb-auto space-y-3">
               <div className="flex items-center gap-2">
                 <VolumeIcon muted={volume === 0} className="h-5 w-5 shrink-0 text-white/70" />
                 <input
