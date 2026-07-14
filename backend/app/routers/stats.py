@@ -4,8 +4,11 @@ Tudo derivado da tabela PlayHistory (uma linha por reprodução iniciada). Só
 leitura — nenhum dado novo é armazenado.
 """
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+import re
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user
@@ -16,15 +19,37 @@ from ..schemas import MeStats, StatItem
 router = APIRouter(prefix="/api/me", tags=["stats"])
 
 _TOP = 5
+_MONTH_RE = re.compile(r"^(\d{4})-(\d{2})$")
+
+
+def _month_bounds(month: str) -> tuple[datetime, datetime]:
+    """Início (inclusivo) e fim (exclusivo) de um mês 'AAAA-MM', em UTC."""
+    m = _MONTH_RE.fullmatch(month)
+    if not m or not 1 <= int(m.group(2)) <= 12:
+        raise HTTPException(status_code=400, detail="Mês inválido (use AAAA-MM).")
+    year, mon = int(m.group(1)), int(m.group(2))
+    start = datetime(year, mon, 1, tzinfo=timezone.utc)
+    end = (
+        datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        if mon == 12
+        else datetime(year, mon + 1, 1, tzinfo=timezone.utc)
+    )
+    return start, end
 
 
 @router.get("/stats", response_model=MeStats)
 async def my_stats(
+    month: str | None = Query(
+        default=None, description="Restringe ao mês 'AAAA-MM' (retrospectiva mensal)."
+    ),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> MeStats:
-    """Totais e rankings pessoais de escuta (todas as reproduções do usuário)."""
+    """Totais e rankings pessoais de escuta (tudo, ou só o mês pedido)."""
     plays = PlayHistory.owner_id == user.id
+    if month is not None:
+        start, end = _month_bounds(month)
+        plays = and_(plays, PlayHistory.played_at >= start, PlayHistory.played_at < end)
 
     total_plays = int(
         await session.scalar(select(func.count(PlayHistory.id)).where(plays)) or 0

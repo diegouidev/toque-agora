@@ -105,7 +105,9 @@ async function zipFolderFiles(
     // Remove o 1º segmento (pasta escolhida) para preservar a estrutura interna:
     // subpastas viram bandas; MP3s na raiz viram um CD com o nome da pasta.
     const inner = f.rel.split("/").slice(1).join("/") || f.file.name;
-    zip.file(inner, f.file);
+    // Data fixa = modificação do arquivo (JSZip usaria "agora", tornando cada
+    // zip único e quebrando a detecção de CD duplicado por hash no servidor).
+    zip.file(inner, f.file, { date: new Date(f.file.lastModified) });
   }
   const blob = await zip.generateAsync(
     { type: "blob", compression: "STORE" },

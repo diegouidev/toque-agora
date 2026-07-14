@@ -21,6 +21,7 @@ from .routers import (
     playlists,
     profile,
     public,
+    push,
     radio,
     recommendations,
     search,
@@ -110,6 +111,7 @@ app.include_router(news.router)
 app.include_router(recommendations.router)
 app.include_router(offline.router)
 app.include_router(comments.router)
+app.include_router(push.router)
 app.include_router(public.router)
 app.include_router(stream.router)
 

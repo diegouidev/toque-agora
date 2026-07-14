@@ -43,6 +43,43 @@ function isStaticAsset(url) {
   );
 }
 
+/* ---- Web Push: notificação de CD novo ---- */
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    /* payload não-JSON: usa defaults */
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "TOQUE AGORA", {
+      body: data.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url: data.url || "/" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((wins) => {
+        // Reusa uma janela aberta do app se houver; senão abre uma nova.
+        for (const win of wins) {
+          if ("focus" in win) {
+            if ("navigate" in win) win.navigate(url).catch(() => {});
+            return win.focus();
+          }
+        }
+        return clients.openWindow(url);
+      })
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 

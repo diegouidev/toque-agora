@@ -431,6 +431,29 @@ class NewsCount(BaseModel):
     count: int = 0
 
 
+# ---------------- Web Push (notificações de CD novo) ----------------
+class PushKeys(BaseModel):
+    """Chaves de criptografia da inscrição (vêm do PushSubscription do navegador)."""
+
+    p256dh: str = Field(min_length=1, max_length=255)
+    auth: str = Field(min_length=1, max_length=255)
+
+
+class PushSubscribeIn(BaseModel):
+    endpoint: str = Field(min_length=1, max_length=1024)
+    keys: PushKeys
+
+
+class PushUnsubscribeIn(BaseModel):
+    endpoint: str = Field(min_length=1, max_length=1024)
+
+
+class PushKeyOut(BaseModel):
+    """Chave pública VAPID em base64url (applicationServerKey)."""
+
+    key: str
+
+
 # ---------------- Comentários nos CDs ----------------
 class CommentCreate(BaseModel):
     body: str = Field(min_length=1, max_length=1000)

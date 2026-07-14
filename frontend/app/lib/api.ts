@@ -745,8 +745,10 @@ export interface MeStats {
   top_bands: StatItem[];
   top_categories: StatItem[];
 }
-export async function fetchMyStats(): Promise<MeStats> {
-  const res = await apiFetch("/api/me/stats");
+// `month` opcional ("AAAA-MM") restringe à retrospectiva daquele mês.
+export async function fetchMyStats(month?: string): Promise<MeStats> {
+  const qs = month ? `?month=${month}` : "";
+  const res = await apiFetch(`/api/me/stats${qs}`);
   if (!res.ok) throw new Error("Falha ao carregar a retrospectiva");
   return res.json();
 }
@@ -785,6 +787,32 @@ export async function fetchNews(): Promise<BandSummary[]> {
 }
 export async function markNewsSeen(): Promise<void> {
   await apiFetch("/api/news/seen", { method: "POST" }).catch(() => {});
+}
+
+// ---------- Web Push (notificações de CD novo) ----------
+export async function fetchPushKey(): Promise<string> {
+  const res = await apiFetch("/api/push/key");
+  if (!res.ok) throw new Error("Falha ao obter a chave de notificações");
+  const d = await res.json();
+  return d.key as string;
+}
+export async function subscribePush(sub: {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}): Promise<void> {
+  const res = await apiFetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sub),
+  });
+  if (!res.ok && res.status !== 204) throw new Error("Falha ao ativar notificações");
+}
+export async function unsubscribePush(endpoint: string): Promise<void> {
+  await apiFetch("/api/push/unsubscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint }),
+  }).catch(() => {});
 }
 
 // ---------- Recomendações ("Descobrir") ----------

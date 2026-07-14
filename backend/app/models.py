@@ -136,6 +136,11 @@ class Archive(Base):
     kind: Mapped[str] = mapped_column(String(8), nullable=False, default="rar")
     # Tamanho do arquivo no disco em bytes (usado no cálculo de quota).
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    # SHA-256 (hex) do conteúdo — detecta reenvio do mesmo arquivo pelo dono.
+    # Nullable: arquivos enviados antes da feature não têm hash.
+    content_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -380,6 +385,29 @@ class Subscription(Base):
     current_period_end: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class PushSubscription(Base):
+    """Inscrição Web Push de um dispositivo/navegador de um usuário (PWA).
+
+    Um usuário pode ter várias (celular + desktop). Endpoints mortos (410/404
+    no envio) são removidos automaticamente.
+    """
+
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    # URL única do push service do navegador (identifica o dispositivo).
+    endpoint: Mapped[str] = mapped_column(String(1024), unique=True, nullable=False)
+    # Chaves de criptografia da inscrição (payload cifrado ponta a ponta).
+    p256dh: Mapped[str] = mapped_column(String(255), nullable=False)
+    auth: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

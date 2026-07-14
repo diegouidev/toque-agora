@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   avatarUrl,
   changeMyPassword,
@@ -8,6 +8,12 @@ import {
   updateMe,
   uploadAvatar,
 } from "../lib/api";
+import {
+  disablePush,
+  enablePush,
+  getPushSubscription,
+  pushSupported,
+} from "../lib/push";
 import { useAuth } from "../lib/auth-context";
 import { useEscClose } from "../lib/useEscClose";
 
@@ -22,6 +28,36 @@ export default function ProfileModal({ onClose }: { onClose: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   // bust de cache do avatar após upload
   const [avatarV, setAvatarV] = useState(0);
+  // Notificações push: null = não suportado neste navegador.
+  const [pushOn, setPushOn] = useState<boolean | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+
+  useEffect(() => {
+    if (!pushSupported()) return; // fica null → mostra a dica de instalar
+    getPushSubscription().then((sub) => setPushOn(sub != null));
+  }, []);
+
+  async function togglePush() {
+    if (pushBusy || pushOn === null) return;
+    setErr(null);
+    setMsg(null);
+    setPushBusy(true);
+    try {
+      if (pushOn) {
+        await disablePush();
+        setPushOn(false);
+        setMsg("Notificações desativadas neste aparelho.");
+      } else {
+        await enablePush();
+        setPushOn(true);
+        setMsg("Você será avisado quando chegar CD novo. 🎵");
+      }
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : "Falha nas notificações");
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   if (!me) return null;
 
@@ -156,6 +192,45 @@ export default function ProfileModal({ onClose }: { onClose: () => void }) {
           </div>
           <p className="text-xs text-zinc-500">Email: {me.email}</p>
         </form>
+
+        {/* Notificações de CD novo (Web Push) */}
+        <div className="space-y-2 border-t border-white/10 pt-4">
+          <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+            Notificações
+          </label>
+          {pushOn === null ? (
+            <p className="text-xs text-zinc-500">
+              Para receber aviso de CD novo, instale o app na tela de início
+              (menu do navegador → “Adicionar à tela de início”) e volte aqui.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={togglePush}
+              disabled={pushBusy}
+              aria-pressed={pushOn}
+              className="flex w-full items-center justify-between rounded-lg bg-white/5 px-3 py-2.5 text-left hover:bg-white/10 disabled:opacity-60"
+            >
+              <span className="text-sm">
+                🔔 Avisar quando chegar CD novo
+                <span className="block text-xs text-zinc-500">
+                  Notificação no aparelho quando entrar CD do seu plano.
+                </span>
+              </span>
+              <span
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                  pushOn ? "bg-accent" : "bg-white/15"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+                    pushOn ? "left-[22px]" : "left-0.5"
+                  }`}
+                />
+              </span>
+            </button>
+          )}
+        </div>
 
         {/* Senha */}
         <form onSubmit={savePwd} className="space-y-2 border-t border-white/10 pt-4">

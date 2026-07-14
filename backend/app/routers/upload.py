@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import posixpath
@@ -22,6 +23,7 @@ from ..auth import get_current_user, used_bytes_for
 from ..config import settings
 from ..database import get_session
 from ..models import Archive, Band, Category, Track, User
+from ..push_service import schedule_new_band_notifications
 from ..schemas import BandSummary, UploadComplete, UploadError, UploadResult
 
 router = APIRouter(prefix="/api", tags=["upload"])
@@ -52,6 +54,36 @@ def _quota_exceeded_http(used: int, quota: int) -> HTTPException:
             "quota_gb": round(quota / _GB, 2),
             "whatsapp": settings.admin_whatsapp,
         },
+    )
+
+
+def _sha256_of(path: str) -> str:
+    """SHA-256 (hex) de um arquivo em disco, lido em chunks (sem estourar RAM)."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        while chunk := fh.read(_CHUNK):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+async def _find_duplicate(
+    session: AsyncSession, user: User, content_hash: str
+) -> Archive | None:
+    """Arquivo com o MESMO conteúdo já enviado por este usuário (ou None)."""
+    return await session.scalar(
+        select(Archive)
+        .where(Archive.owner_id == user.id, Archive.content_hash == content_hash)
+        .limit(1)
+    )
+
+
+def _duplicate_http(dup: Archive) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail=(
+            f"Você já enviou este arquivo antes (“{dup.filename}”). "
+            "Upload ignorado para não duplicar o CD nem gastar sua quota."
+        ),
     )
 
 
@@ -104,6 +136,9 @@ async def upload_archives(
             status_code=422,
             detail="; ".join(f"{e.filename}: {e.detail}" for e in errors),
         )
+
+    # Avisa (push) os assinantes dos CDs novos, sem atrasar a resposta.
+    schedule_new_band_notifications(created_bands, owner_id=user.id)
 
     return UploadResult(
         bands=[
@@ -221,6 +256,13 @@ async def upload_complete(
         _safe_remove(part_path)
         raise _quota_exceeded_http(used + written, user.quota_bytes)
 
+    # Detecção de duplicado: mesmo conteúdo já enviado por este usuário.
+    content_hash = await run_in_threadpool(_sha256_of, part_path)
+    dup = await _find_duplicate(session, user, content_hash)
+    if dup is not None:
+        _safe_remove(part_path)
+        raise _duplicate_http(dup)
+
     stored_name = f"{uuid.uuid4().hex}.{kind}"
     stored_path = os.path.join(settings.data_dir, stored_name)
     try:
@@ -240,7 +282,10 @@ async def upload_complete(
         user,
         session,
         category_ids=[body.category_id] if body.category_id else None,
+        content_hash=content_hash,
     )
+    # Avisa (push) os assinantes dos CDs novos, sem atrasar a resposta.
+    schedule_new_band_notifications(bands, owner_id=user.id)
     return UploadResult(
         bands=[
             BandSummary(
@@ -308,6 +353,13 @@ async def _process_one(
             status_code=500, detail="Falha ao salvar o arquivo. Tente novamente."
         ) from exc
 
+    # Detecção de duplicado: mesmo conteúdo já enviado por este usuário.
+    content_hash = await run_in_threadpool(_sha256_of, stored_path)
+    dup = await _find_duplicate(session, user, content_hash)
+    if dup is not None:
+        _safe_remove(stored_path)
+        raise _duplicate_http(dup)
+
     return await _index_archive(
         stored_path,
         kind,
@@ -316,6 +368,7 @@ async def _process_one(
         user,
         session,
         category_ids=[category_id] if category_id else None,
+        content_hash=content_hash,
     )
 
 
@@ -327,6 +380,7 @@ async def _index_archive(
     user: User,
     session: AsyncSession,
     category_ids: list[int] | None = None,
+    content_hash: str | None = None,
 ) -> list[Band]:
     """Valida (magic), indexa bandas/faixas e persiste um arquivo já gravado.
 
@@ -389,6 +443,7 @@ async def _index_archive(
         stored_path=stored_path,
         kind=kind,
         size_bytes=written,
+        content_hash=content_hash,
     )
     for bm in band_meta:
         cover_name = bm.get("cover_name")
