@@ -771,6 +771,18 @@ export default function PlayerBar({
               <PlayIcon className="ml-0.5 h-5 w-5" />
             )}
           </button>
+
+          {/* Próxima faixa */}
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={!hasNext}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-300 transition-opacity hover:text-white disabled:opacity-30"
+            aria-label="Próxima"
+            title="Próxima"
+          >
+            <NextIcon className="h-6 w-6" />
+          </button>
         </div>
         {/* mini progress fininho */}
         <div className="h-0.5 w-full bg-white/10">
