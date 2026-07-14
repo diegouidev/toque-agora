@@ -26,6 +26,7 @@ import TrackList from "./components/TrackList";
 import UploadModal from "./components/UploadModal";
 import UpgradeModal from "./components/UpgradeModal";
 import {
+  DownloadIcon,
   EditIcon,
   HeartIcon,
   MenuIcon,
@@ -517,6 +518,47 @@ export default function Home() {
     setShowUpload(true);
   }
 
+  // ----- Baixar o CD inteiro para ouvir offline -----
+  // Progresso do lote (null = parado). Reusa o download por faixa da lib.
+  const [cdDownload, setCdDownload] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const cdAllDownloaded =
+    viewTracks.length > 0 && viewTracks.every((t) => downloads.isDownloaded(t.id));
+
+  async function onDownloadCdOffline() {
+    if (cdDownload || viewTracks.length === 0) return;
+
+    // Já está todo baixado → oferece remover os downloads deste CD.
+    if (cdAllDownloaded) {
+      const ok = await dialog.confirm({
+        title: "Remover downloads deste CD?",
+        message: "As faixas deixam de tocar offline neste aparelho.",
+        confirmLabel: "Remover",
+        danger: true,
+      });
+      if (!ok) return;
+      for (const t of viewTracks) await downloads.remove(t.id);
+      toast.info("Downloads do CD removidos.");
+      return;
+    }
+
+    const pending = viewTracks.filter((t) => !downloads.isDownloaded(t.id));
+    setCdDownload({ done: 0, total: pending.length });
+    try {
+      // Sequencial: não disputa banda com o streaming e dá progresso simples.
+      for (let i = 0; i < pending.length; i++) {
+        await downloads.download(pending[i]);
+        setCdDownload({ done: i + 1, total: pending.length });
+      }
+      toast.success("CD baixado para ouvir offline. 🎧");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao baixar o CD.");
+    } finally {
+      setCdDownload(null);
+    }
+  }
+
   async function onDeleteBand(band: BandSummary) {
     const ok = await dialog.confirm({
       title: `Excluir "${band.name}"?`,
@@ -924,6 +966,36 @@ export default function Home() {
                     <ShareIcon className="h-5 w-5" />
                   </button>
                 )}
+                {/* Baixar o CD inteiro para ouvir offline */}
+                <button
+                  onClick={onDownloadCdOffline}
+                  disabled={cdDownload !== null || viewTracks.length === 0}
+                  className={`flex h-11 items-center justify-center rounded-full border transition-colors disabled:opacity-60 ${
+                    cdDownload !== null ? "px-3" : "w-11"
+                  } ${
+                    cdAllDownloaded
+                      ? "border-accent/50 bg-accent/15 text-accent"
+                      : "border-white/15 bg-white/5 text-zinc-300 hover:text-white"
+                  }`}
+                  aria-label={
+                    cdAllDownloaded
+                      ? "CD baixado — remover downloads"
+                      : "Baixar CD para ouvir offline"
+                  }
+                  title={
+                    cdAllDownloaded
+                      ? "CD baixado — toque para remover os downloads"
+                      : "Baixar CD para ouvir offline"
+                  }
+                >
+                  {cdDownload !== null ? (
+                    <span className="text-xs font-bold tabular-nums">
+                      {cdDownload.done}/{cdDownload.total}
+                    </span>
+                  ) : (
+                    <DownloadIcon className="h-5 w-5" />
+                  )}
+                </button>
               </div>
             </div>
           </div>
